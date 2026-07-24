@@ -1,0 +1,57 @@
+# Built outputs
+**/build/
+.gradle/
+local.properties
+captures/
+*.apk
+*.aab
+*.ap_
+*.dex
+
+# IDE
+.idea/
+*.iml
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Android Studio / NDK
+.externalNativeBuild/
+.cxx/
+*.hprof
+
+# Generated datasets (regenerate with tools/datasets/*.py)
+datasets/generated/**/images/
+datasets/generated/**/*.jpg
+datasets/generated/**/*.jpeg
+datasets/generated/**/*.png
+datasets/generated/**/*.webp
+
+# Keep directory placeholders and manifests if present
+!datasets/generated/**/.gitkeep
+!datasets/generated/**/manifest.json
+!datasets/generated/**/checksums.txt
+
+# Copied assets from generation (optional local sync)
+app/src/main/assets/datasets/**/images/
+app/src/main/assets/datasets/**/*.jpg
+app/src/main/assets/datasets/**/*.jpeg
+app/src/main/assets/datasets/**/*.png
+app/src/main/assets/datasets/**/*.webp
+!app/src/main/assets/datasets/**/.gitkeep
+!app/src/main/assets/datasets/**/manifest.json
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Benchmark noise (group stores curated results under docs/benchmark later)
+docs/benchmark/raw/
+*.perfetto-trace
+*.trace
+
+# Instruction source of truth stays local to the workspace; do not commit if following APP_INSTRUCTIONS §17
+APP_INSTRUCTIONS.md

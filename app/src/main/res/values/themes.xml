@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      Edit gallery/preview fill and gap colors via the three custom items below
+      (or change the @color/* values in colors.xml).
+    -->
+    <!-- Gallery: no ActionBar so the grid is fully visible. -->
+    <style name="Theme.CS426Gallery" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/app_primary</item>
+        <item name="colorPrimaryVariant">@color/app_primary_variant</item>
+        <item name="colorOnPrimary">@color/app_on_primary</item>
+        <item name="colorSecondary">@color/app_secondary</item>
+        <item name="android:statusBarColor">@color/app_status_bar</item>
+
+        <!-- Gap between images (gallery screen background). -->
+        <item name="galleryBackground">@color/gallery_background</item>
+        <!-- Letterbox bars for non-square images in the grid. -->
+        <item name="galleryCellLetterbox">@color/gallery_cell_letterbox</item>
+        <!-- Letterbox bars / background in preview (kept for theme consistency). -->
+        <item name="previewLetterbox">@color/preview_letterbox</item>
+        <item name="android:windowBackground">?attr/galleryBackground</item>
+        <item name="android:colorBackground">?attr/galleryBackground</item>
+    </style>
+
+    <!-- Gallery grid thumbnails: change cornerSize via @dimen/gallery_image_corner_radius. -->
+    <style name="ShapeAppearanceOverlay.CS426Gallery.GalleryImage" parent="">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">@dimen/gallery_image_corner_radius</item>
+    </style>
+
+    <!-- Preview: ActionBar with Up so users can return to the gallery. -->
+    <style name="Theme.CS426Gallery.Preview" parent="Theme.MaterialComponents.DayNight.DarkActionBar">
+        <item name="colorPrimary">@color/app_primary</item>
+        <item name="colorPrimaryVariant">@color/app_primary_variant</item>
+        <item name="colorOnPrimary">@color/app_on_primary</item>
+        <item name="colorSecondary">@color/app_secondary</item>
+        <item name="android:statusBarColor">@color/app_status_bar</item>
+
+        <item name="galleryBackground">@color/gallery_background</item>
+        <item name="galleryCellLetterbox">@color/gallery_cell_letterbox</item>
+        <!-- Letterbox bars for non-square images in preview mode. -->
+        <item name="previewLetterbox">@color/preview_letterbox</item>
+        <item name="android:windowBackground">?attr/previewLetterbox</item>
+        <item name="android:colorBackground">?attr/previewLetterbox</item>
+    </style>
+</resources>

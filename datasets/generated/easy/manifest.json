@@ -1,0 +1,83 @@
+{
+  "dataset": "easy",
+  "seed": 2026,
+  "count": 10,
+  "format": "JPEG",
+  "jpeg_quality": 85,
+  "resolution": {
+    "width": 256,
+    "height": 256
+  },
+  "images": [
+    {
+      "id": 1,
+      "filename": "image_0001.jpg",
+      "timestamp": "2026-01-01T00:00:00Z",
+      "width": 256,
+      "height": 256
+    },
+    {
+      "id": 2,
+      "filename": "image_0002.jpg",
+      "timestamp": "2026-01-01T00:00:01Z",
+      "width": 256,
+      "height": 256
+    },
+    {
+      "id": 3,
+      "filename": "image_0003.jpg",
+      "timestamp": "2026-01-01T00:00:02Z",
+      "width": 256,
+      "height": 256
+    },
+    {
+      "id": 4,
+      "filename": "image_0004.jpg",
+      "timestamp": "2026-01-01T00:00:03Z",
+      "width": 256,
+      "height": 256
+    },
+    {
+      "id": 5,
+      "filename": "image_0005.jpg",
+      "timestamp": "2026-01-01T00:00:04Z",
+      "width": 256,
+      "height": 256
+    },
+    {
+      "id": 6,
+      "filename": "image_0006.jpg",
+      "timestamp": "2026-01-01T00:00:05Z",
+      "width": 256,
+      "height": 256
+    },
+    {
+      "id": 7,
+      "filename": "image_0007.jpg",
+      "timestamp": "2026-01-01T00:00:06Z",
+      "width": 256,
+      "height": 256
+    },
+    {
+      "id": 8,
+      "filename": "image_0008.jpg",
+      "timestamp": "2026-01-01T00:00:07Z",
+      "width": 256,
+      "height": 256
+    },
+    {
+      "id": 9,
+      "filename": "image_0009.jpg",
+      "timestamp": "2026-01-01T00:00:08Z",
+      "width": 256,
+      "height": 256
+    },
+    {
+      "id": 10,
+      "filename": "image_0010.jpg",
+      "timestamp": "2026-01-01T00:00:09Z",
+      "width": 256,
+      "height": 256
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">CS426 Gallery</string>
+    <string name="preview_title">Preview</string>
+    <string name="gallery_item_cd">Gallery image</string>
+    <string name="gallery_item_cd_indexed">Gallery image %1$d</string>
+    <string name="preview_image_cd">Full image preview</string>
+    <string name="preview_image_cd_indexed">Full image preview %1$d</string>
+    <string name="preview_prev_cd">Previous image</string>
+    <string name="preview_next_cd">Next image</string>
+    <string name="gallery_load_error">Could not load gallery dataset. Generate and sync assets first.</string>
+    <string name="preview_load_error">Could not load image preview.</string>
+</resources>

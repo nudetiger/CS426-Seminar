@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <integer name="gallery_column_count">4</integer>
+    <dimen name="gallery_padding">2dp</dimen>
+    <dimen name="gallery_cell_padding">0dp</dimen>
+    <dimen name="gallery_column_spacing">2dp</dimen>
+    <dimen name="gallery_row_spacing">2dp</dimen>
+    <!-- Gallery grid image corner radius; set to 0dp for square cells. -->
+    <dimen name="gallery_image_corner_radius">6dp</dimen>
+    <dimen name="preview_arrow_size">48dp</dimen>
+    <dimen name="preview_arrow_margin">8dp</dimen>
+</resources>

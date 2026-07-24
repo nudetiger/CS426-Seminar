@@ -1,0 +1,7 @@
+## This file must *NOT* be checked into Version Control Systems,
+# as it contains information specific to your local configuration.
+#
+# Location of the SDK. Absolute path required.
+# Example (Windows):
+# sdk.dir=C\:\\Users\\YOU\\AppData\\Local\\Android\\Sdk
+sdk.dir=

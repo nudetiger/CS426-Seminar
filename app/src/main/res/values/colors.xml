@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      Visual theme colors — referenced from themes.xml.
+      Edit hex values here (or override the theme items in themes.xml).
+    -->
+    <!-- Gap between gallery cells + gallery screen background. -->
+    <color name="gallery_background">#42424A</color>
+    <!-- Letterbox bars inside non-square gallery cells (fitCenter empty space). -->
+    <color name="gallery_cell_letterbox">#1A1A1A</color>
+    <!-- Letterbox bars / background behind non-square preview images. -->
+    <color name="preview_letterbox">#1A1A1A</color>
+
+    <color name="app_primary">#272729</color>
+    <color name="app_primary_variant">#111112</color> 
+    <color name="app_on_primary">#6B6B70</color>
+    <color name="app_secondary">#42424A</color>
+    <color name="app_status_bar">#598EF0</color>
+
+    <color name="ic_launcher_background">#38455E</color>
+</resources>

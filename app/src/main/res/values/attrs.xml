@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Theme knobs for gallery/preview letterboxing and gap color. Set in themes.xml. -->
+    <attr name="galleryBackground" format="color|reference" />
+    <attr name="galleryCellLetterbox" format="color|reference" />
+    <attr name="previewLetterbox" format="color|reference" />
+</resources>

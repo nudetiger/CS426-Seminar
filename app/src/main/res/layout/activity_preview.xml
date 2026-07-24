@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/preview_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="?attr/previewLetterbox">
+
+    <!-- Phase 1: adjacent image is decoded only after a swipe is detected. -->
+    <FrameLayout
+        android:id="@+id/preview_swipe_layer"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+
+        <ImageView
+            android:id="@+id/preview_image"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:contentDescription="@string/preview_image_cd"
+            android:scaleType="fitCenter" />
+
+        <ImageView
+            android:id="@+id/preview_image_adjacent"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:contentDescription="@string/preview_image_cd"
+            android:scaleType="fitCenter"
+            android:visibility="gone" />
+    </FrameLayout>
+
+    <ImageButton
+        android:id="@+id/preview_prev"
+        android:layout_width="@dimen/preview_arrow_size"
+        android:layout_height="@dimen/preview_arrow_size"
+        android:layout_gravity="center_vertical|start"
+        android:layout_marginStart="@dimen/preview_arrow_margin"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:contentDescription="@string/preview_prev_cd"
+        android:src="@drawable/ic_chevron_left" />
+
+    <ImageButton
+        android:id="@+id/preview_next"
+        android:layout_width="@dimen/preview_arrow_size"
+        android:layout_height="@dimen/preview_arrow_size"
+        android:layout_gravity="center_vertical|end"
+        android:layout_marginEnd="@dimen/preview_arrow_margin"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:contentDescription="@string/preview_next_cd"
+        android:src="@drawable/ic_chevron_right" />
+</FrameLayout>
