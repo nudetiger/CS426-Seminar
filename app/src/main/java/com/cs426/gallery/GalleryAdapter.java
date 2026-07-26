@@ -1,6 +1,8 @@
 package com.cs426.gallery;
 
 import android.graphics.Bitmap;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -18,11 +20,13 @@ import com.cs426.gallery.image.ImageDecoder;
 import java.io.IOException;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
 
 /**
- * Phase 2 step 2 adapter: decodes each cell at bind time and clears/recycles on
- * ViewHolder recycle so recycled cells never keep or show stale bitmaps.
- * Decode remains on the main thread until step 3.
+ * Phase 2 step 3 adapter: bind-time viewport loads decode on a bounded background
+ * executor; results post to the main thread and are ignored if the holder was
+ * recycled or rebound.
  */
 public class GalleryAdapter extends RecyclerView.Adapter<GalleryAdapter.GalleryViewHolder> {
 
@@ -34,15 +38,22 @@ public class GalleryAdapter extends RecyclerView.Adapter<GalleryAdapter.GalleryV
 
     private final GalleryRepository repository;
     private final ImageDecoder decoder;
+    private final ExecutorService decodeExecutor;
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
 
     private List<GalleryImage> images = Collections.emptyList();
     private int cellSize;
     @Nullable
     private OnImageClickListener clickListener;
+    private boolean shutdown;
 
-    public GalleryAdapter(@NonNull GalleryRepository repository, @NonNull ImageDecoder decoder) {
+    public GalleryAdapter(
+            @NonNull GalleryRepository repository,
+            @NonNull ImageDecoder decoder,
+            @NonNull ExecutorService decodeExecutor) {
         this.repository = repository;
         this.decoder = decoder;
+        this.decodeExecutor = decodeExecutor;
     }
 
     public void setOnImageClickListener(@Nullable OnImageClickListener listener) {
@@ -75,11 +86,13 @@ public class GalleryAdapter extends RecyclerView.Adapter<GalleryAdapter.GalleryV
             holder.itemView.setLayoutParams(params);
         }
 
+        cancelPendingDecode(holder);
         clearHolderBitmap(holder);
 
         GalleryImage image = images.get(position);
         final int imageIndex = position;
         final int imageId = image.getId();
+        final String assetPath = repository.getImageAssetPath(image);
         holder.boundImageId = imageId;
         holder.bindGeneration++;
         final int generation = holder.bindGeneration;
@@ -87,6 +100,7 @@ public class GalleryAdapter extends RecyclerView.Adapter<GalleryAdapter.GalleryV
         holder.imageView.setContentDescription(
                 holder.itemView.getContext()
                         .getString(R.string.gallery_item_cd_indexed, imageId));
+        holder.imageView.setImageDrawable(null);
 
         holder.itemView.setOnClickListener(v -> {
             if (clickListener != null) {
@@ -94,22 +108,36 @@ public class GalleryAdapter extends RecyclerView.Adapter<GalleryAdapter.GalleryV
             }
         });
 
-        // Viewport load: decode only the image for this bound cell.
-        Bitmap decoded = null;
-        try {
-            decoded = decoder.decodeAssetFull(repository.getImageAssetPath(image));
-        } catch (IOException e) {
-            Log.e(TAG, "Failed to decode " + image.getFilename(), e);
+        if (shutdown) {
+            return;
         }
 
-        if (!holder.isBindingCurrent(imageId, generation)) {
-            // Recycled or rebound while decoding — drop the result (no stale apply).
+        holder.decodeFuture = decodeExecutor.submit(() -> {
+            Bitmap decoded = null;
+            try {
+                decoded = decoder.decodeAssetFull(assetPath);
+            } catch (IOException e) {
+                Log.e(TAG, "Failed to decode " + image.getFilename(), e);
+            }
+
+            final Bitmap result = decoded;
+            mainHandler.post(() -> applyDecodedBitmap(holder, imageId, generation, result));
+        });
+    }
+
+    private void applyDecodedBitmap(
+            @NonNull GalleryViewHolder holder,
+            int imageId,
+            int generation,
+            @Nullable Bitmap decoded) {
+        if (!holder.isBindingCurrent(imageId, generation) || shutdown) {
             if (decoded != null && !decoded.isRecycled()) {
                 decoded.recycle();
             }
             return;
         }
 
+        holder.decodeFuture = null;
         if (decoded != null) {
             holder.boundBitmap = decoded;
             holder.imageView.setImageBitmap(decoded);
@@ -120,6 +148,7 @@ public class GalleryAdapter extends RecyclerView.Adapter<GalleryAdapter.GalleryV
 
     @Override
     public void onViewRecycled(@NonNull GalleryViewHolder holder) {
+        cancelPendingDecode(holder);
         holder.bindGeneration++;
         holder.boundImageId = GalleryViewHolder.NO_ID;
         clearHolderBitmap(holder);
@@ -132,6 +161,14 @@ public class GalleryAdapter extends RecyclerView.Adapter<GalleryAdapter.GalleryV
         return images.size();
     }
 
+    /**
+     * Stop accepting new decode work callbacks. The Activity owns executor shutdown.
+     */
+    public void markShutdown() {
+        shutdown = true;
+        mainHandler.removeCallbacksAndMessages(null);
+    }
+
     /** Drop any bitmaps still held by visible holders (call before Activity teardown). */
     public void releaseBitmaps(@Nullable RecyclerView recyclerView) {
         if (recyclerView == null) {
@@ -141,10 +178,18 @@ public class GalleryAdapter extends RecyclerView.Adapter<GalleryAdapter.GalleryV
             RecyclerView.ViewHolder raw = recyclerView.getChildViewHolder(recyclerView.getChildAt(i));
             if (raw instanceof GalleryViewHolder) {
                 GalleryViewHolder holder = (GalleryViewHolder) raw;
+                cancelPendingDecode(holder);
                 holder.bindGeneration++;
                 holder.boundImageId = GalleryViewHolder.NO_ID;
                 clearHolderBitmap(holder);
             }
+        }
+    }
+
+    private static void cancelPendingDecode(@NonNull GalleryViewHolder holder) {
+        if (holder.decodeFuture != null) {
+            holder.decodeFuture.cancel(false);
+            holder.decodeFuture = null;
         }
     }
 
@@ -164,6 +209,8 @@ public class GalleryAdapter extends RecyclerView.Adapter<GalleryAdapter.GalleryV
         int bindGeneration;
         @Nullable
         Bitmap boundBitmap;
+        @Nullable
+        Future<?> decodeFuture;
 
         GalleryViewHolder(@NonNull View itemView) {
             super(itemView);

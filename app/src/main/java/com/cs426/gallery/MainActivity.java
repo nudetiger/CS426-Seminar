@@ -18,10 +18,14 @@ import com.cs426.gallery.image.ImageDecoder;
 import java.io.IOException;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Phase 2 step 2 gallery host: RecyclerView grid with bind-time (viewport) loading.
- * Images decode when cells bind; recycled holders clear bitmaps so stale pixels never stick.
+ * Phase 2 step 3 gallery host: viewport bind loads decode on a bounded background
+ * executor; UI bitmap applies stay on the main thread; executor shuts down on destroy.
  */
 public class MainActivity extends AppCompatActivity {
 
@@ -29,6 +33,8 @@ public class MainActivity extends AppCompatActivity {
 
     private RecyclerView galleryRecycler;
     private GalleryAdapter galleryAdapter;
+    @Nullable
+    private ExecutorService decodeExecutor;
     private List<GalleryImage> images = Collections.emptyList();
     private boolean gridReady;
     private long createElapsedRealtime;
@@ -50,8 +56,9 @@ public class MainActivity extends AppCompatActivity {
 
         GalleryRepository repository = new GalleryRepository(this);
         ImageDecoder decoder = new ImageDecoder(this);
+        decodeExecutor = createDecodeExecutor();
 
-        galleryAdapter = new GalleryAdapter(repository, decoder);
+        galleryAdapter = new GalleryAdapter(repository, decoder, decodeExecutor);
         galleryAdapter.setOnImageClickListener(this::openPreview);
         galleryRecycler.setAdapter(galleryAdapter);
 
@@ -63,8 +70,19 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
 
-        // Metadata only at init — decode happens in adapter onBind (viewport loading).
         galleryRecycler.post(this::bindGridWhenSized);
+    }
+
+    private static ExecutorService createDecodeExecutor() {
+        int cores = Runtime.getRuntime().availableProcessors();
+        int poolSize = Math.max(2, Math.min(4, cores));
+        AtomicInteger nextId = new AtomicInteger(1);
+        ThreadFactory factory = runnable -> {
+            Thread thread = new Thread(runnable, "gallery-decode-" + nextId.getAndIncrement());
+            thread.setPriority(Thread.NORM_PRIORITY - 1);
+            return thread;
+        };
+        return Executors.newFixedThreadPool(poolSize, factory);
     }
 
     private void bindGridWhenSized() {
@@ -89,7 +107,7 @@ public class MainActivity extends AppCompatActivity {
 
         galleryAdapter.submit(images, cellSize);
         gridReady = true;
-        // After submit, the next frame has bound the first viewport (sync decode on main thread).
+        // Grid is laid out; visible cells decode asynchronously on the executor.
         galleryRecycler.post(() -> {
             if (isFinishing()) {
                 return;
@@ -126,10 +144,15 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         if (galleryAdapter != null) {
+            galleryAdapter.markShutdown();
             galleryAdapter.releaseBitmaps(galleryRecycler);
         }
         if (galleryRecycler != null) {
             galleryRecycler.setAdapter(null);
+        }
+        if (decodeExecutor != null) {
+            decodeExecutor.shutdownNow();
+            decodeExecutor = null;
         }
         super.onDestroy();
     }
