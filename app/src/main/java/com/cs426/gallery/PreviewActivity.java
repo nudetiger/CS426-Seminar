@@ -15,6 +15,7 @@ import androidx.annotation.Nullable;
 import androidx.appcompat.app.ActionBar;
 import androidx.appcompat.app.AppCompatActivity;
 
+import com.cs426.gallery.bench.BenchLog;
 import com.cs426.gallery.data.GalleryImage;
 import com.cs426.gallery.data.GalleryRepository;
 import com.cs426.gallery.image.ImageDecoder;
@@ -59,9 +60,13 @@ public class PreviewActivity extends AppCompatActivity {
     private boolean swipeArmed;
     /** -1 = toward previous, +1 = toward next, 0 = undecided. */
     private int swipeDirection;
+    private long createElapsedRealtime;
+    private long navigateStartElapsed;
+    private boolean initialPreviewLogged;
 
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
+        createElapsedRealtime = BenchLog.now();
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_preview);
 
@@ -96,10 +101,15 @@ public class PreviewActivity extends AppCompatActivity {
         }
 
         currentIndex = resolveStartIndex();
-        prevButton.setOnClickListener(v -> showAtIndex(currentIndex - 1));
-        nextButton.setOnClickListener(v -> showAtIndex(currentIndex + 1));
+        prevButton.setOnClickListener(v -> navigateToIndex(currentIndex - 1));
+        nextButton.setOnClickListener(v -> navigateToIndex(currentIndex + 1));
         swipeLayer.setOnTouchListener(this::onSwipeTouch);
         showAtIndex(currentIndex);
+    }
+
+    private void navigateToIndex(int index) {
+        navigateStartElapsed = BenchLog.now();
+        showAtIndex(index);
     }
 
     @Override
@@ -232,6 +242,7 @@ public class PreviewActivity extends AppCompatActivity {
     }
 
     private void commitSwipe(int newIndex) {
+        long commitStart = BenchLog.now();
         Bitmap previous = currentBitmap;
         currentBitmap = adjacentBitmap;
         adjacentBitmap = null;
@@ -252,6 +263,10 @@ public class PreviewActivity extends AppCompatActivity {
         previewImage.setContentDescription(
                 getString(R.string.preview_image_cd_indexed, image.getId()));
         updateArrowState();
+        BenchLog.mark(
+                "preview_navigate",
+                commitStart,
+                "index=" + currentIndex + " id=" + image.getId() + " via=swipe");
     }
 
     private void cancelSwipe() {
@@ -309,6 +324,16 @@ public class PreviewActivity extends AppCompatActivity {
             previewImage.setImageBitmap(currentBitmap);
             previewImage.setContentDescription(
                     getString(R.string.preview_image_cd_indexed, image.getId()));
+            String extras = "index=" + currentIndex + " id=" + image.getId();
+            if (!initialPreviewLogged) {
+                BenchLog.mark("preview_ready", createElapsedRealtime, extras);
+                initialPreviewLogged = true;
+            } else if (navigateStartElapsed > 0L) {
+                BenchLog.mark("preview_navigate", navigateStartElapsed, extras + " via=arrow");
+                navigateStartElapsed = 0L;
+            } else {
+                BenchLog.markFields("preview_ready", extras);
+            }
         } catch (IOException e) {
             Log.e(TAG, "Failed to decode preview for " + image.getFilename(), e);
             Toast.makeText(this, R.string.preview_load_error, Toast.LENGTH_SHORT).show();

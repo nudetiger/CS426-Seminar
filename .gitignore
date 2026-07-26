@@ -48,8 +48,9 @@ __pycache__/
 .venv/
 venv/
 
-# Benchmark noise (group stores curated results under docs/benchmark later)
-docs/benchmark/raw/
+# Benchmark outputs (local only; keep folder via .gitkeep)
+docs/benchmark/**
+!docs/benchmark/.gitkeep
 *.perfetto-trace
 *.trace
 

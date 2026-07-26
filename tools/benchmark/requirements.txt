@@ -1,0 +1,3 @@
+# CS426 gallery benchmark harness — Python standard library only.
+# Requires Python 3.9+ and adb (Android platform-tools) on PATH.
+# No pip packages are required to run tools/benchmark/run_benchmark.py.

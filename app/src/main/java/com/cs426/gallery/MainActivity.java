@@ -13,6 +13,7 @@ import android.widget.Toast;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 
+import com.cs426.gallery.bench.BenchLog;
 import com.cs426.gallery.data.GalleryImage;
 import com.cs426.gallery.data.GalleryRepository;
 import com.cs426.gallery.image.ImageDecoder;
@@ -35,9 +36,11 @@ public class MainActivity extends AppCompatActivity {
     private final List<Bitmap> decodedBitmaps = new ArrayList<>();
     private List<GalleryImage> images = Collections.emptyList();
     private boolean gridBuilt;
+    private long createElapsedRealtime;
 
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
+        createElapsedRealtime = BenchLog.now();
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
@@ -135,6 +138,11 @@ public class MainActivity extends AppCompatActivity {
         }
 
         gridBuilt = true;
+        BenchLog.mark(
+                "gallery_ready",
+                createElapsedRealtime,
+                "dataset=" + BuildConfig.GALLERY_DATASET + " count=" + images.size());
+        reportFullyDrawn();
     }
 
     private int resolveGalleryContentWidth() {

@@ -29,8 +29,9 @@ See `PROJECT_CONTEXT.md` for the live map. High level:
 ```text
 app/                 Android module (gallery + preview)
 tools/datasets/      Dataset generators + asset sync
+tools/benchmark/     Automated adb benchmark CLI → CSV
 datasets/generated/  Script output
-docs/benchmark/      Group measurement outputs later
+docs/benchmark/      Benchmark CSV output (contents gitignored)
 ```
 
 Package: `com.cs426.gallery`
@@ -99,14 +100,70 @@ app/src/main/assets/datasets/{easy|mixed}/
 
 Current work is Phase 1 **functional baseline** (eager gallery + preview). Smoke-test, then tag `v1-unoptimized`.
 
-## Planned benchmark tools (group)
+## How to benchmark
 
-- Jetpack Macrobenchmark + `FrameTimingMetric`
-- Perfetto / System Trace
-- Memory Profiler (supporting)
-- Optional LeakCanary in debug
+Automated host-side harness under `tools/benchmark/` (Python **3.9+**, **stdlib only** — no pip packages). It drives the app over **adb**, reads on-device `GalleryBench` log markers (wall-clock latency) plus `dumpsys gfxinfo` / `meminfo` (scroll frames / memory), then writes CSV.
 
-Store curated outputs under `docs/benchmark/`.
+Measurements use in-app `SystemClock` markers and system frame dumps, so the Python driver does not sit on the app’s UI thread. Occasional one-line logs have negligible cost compared with image decode.
+
+### Prerequisites
+
+1. Unlocked emulator or device with USB debugging (`adb devices` shows `device`).
+2. App installed for the dataset you intend to measure (or pass `--install`).
+3. `adb` on `PATH` (Android SDK platform-tools).
+
+### Run
+
+From the project root:
+
+```bash
+# Device connected; app already installed (mixed dataset build)
+python tools/benchmark/run_benchmark.py --tag v1-unoptimized --iterations 10
+
+# Rebuild/install easy dataset, then run a subset
+python tools/benchmark/run_benchmark.py --install --dataset easy --scenarios cold_startup,scroll_gallery --iterations 5 --tag v1-easy
+
+# Customize warmup, swipe steps, scroll flings, output location
+python tools/benchmark/run_benchmark.py --tag v2-optimized --warmup 2 --iterations 15 --swipe-count 8 --scroll-flings 12 --output-dir docs/benchmark
+```
+
+On Windows, use the same commands; `--install` invokes `gradlew.bat` when present.
+
+### Useful flags
+
+| Flag | Default | Meaning |
+|------|---------|---------|
+| `--iterations` | `10` | Measured runs per scenario |
+| `--warmup` | `1` | Discarded runs before measurement |
+| `--scenarios` | all five | Comma list: `cold_startup,open_preview,swipe_preview,scroll_gallery,memory` |
+| `--dataset` | `mixed` | CSV label; with `--install`, passed as `-PgalleryDataset=` |
+| `--install` | off | `installDebug` before the suite |
+| `--tag` | `untagged` | Label column in CSV (e.g. git tag name) |
+| `--preview-index` | `0` | Zero-based cell to open (id ≈ index+1) |
+| `--swipe-count` | `5` | Next-arrow steps per `swipe_preview` run |
+| `--scroll-flings` | `8` | Swipes per `scroll_gallery` run |
+| `--timeout-sec` | `180` | Wait budget for Phase 1 cold start |
+| `--output-dir` | `docs/benchmark/` | CSV directory |
+| `--output-prefix` | `<tag>_<dataset>_<utc>` | Filename prefix |
+
+### Scenarios
+
+| Scenario | What it measures |
+|----------|------------------|
+| `cold_startup` | Force-stop → launch → `gallery_ready` (`elapsed_ms`, includes Phase 1 decode-all + eager grid) |
+| `open_preview` | Tap gallery cell → `preview_ready` |
+| `swipe_preview` | Repeated **Next** taps → `preview_navigate` step times |
+| `scroll_gallery` | Fixed swipes + `gfxinfo framestats` → jank %, frame percentiles (primary UX metric) |
+| `memory` | `dumpsys meminfo` after gallery ready — **supporting** evidence only |
+
+### Output
+
+Each run writes two files (contents of `docs/benchmark/` are gitignored):
+
+- `{prefix}_runs.csv` — every sample: tag, dataset, scenario, metric, unit, iteration, value, timestamp
+- `{prefix}_summary.csv` — per scenario+metric: **n, mean, median, stdev, min, max, p95**
+
+Optional deep dives (not automated here): Perfetto / System Trace, Android Studio Memory Profiler.
 
 ## Known limitations
 

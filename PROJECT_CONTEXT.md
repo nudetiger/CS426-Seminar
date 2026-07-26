@@ -29,10 +29,11 @@ Two activities (`MainActivity`, `PreviewActivity`). Metadata flows through `Gall
 | `app/src/main/res/layout/` | Gallery, preview, item XML |
 | `app/src/main/assets/datasets/` | Runtime easy/mixed assets (manifest + images) |
 | `tools/datasets/` | Python generators + asset sync helper |
+| `tools/benchmark/` | Automated adb benchmark CLI → CSV |
 | `datasets/generated/` | Generator output (images usually not committed) |
-| `docs/benchmark/` | Group results later |
+| `docs/benchmark/` | Benchmark CSV output (contents gitignored) |
 | `PROJECT_CONTEXT.md` | This navigation map |
-| `README.md` | Setup and run docs |
+| `README.md` | Setup, run, and benchmark docs |
 
 ## Key files/classes
 
@@ -44,6 +45,7 @@ Two activities (`MainActivity`, `PreviewActivity`). Metadata flows through `Gall
 | `GalleryRepository` | Selected dataset → ordered list + asset paths |
 | `DatasetManifestReader` | Parse/sort `manifest.json` |
 | `ImageDecoder` | Full asset decode (Phase 1 grid/preview) |
+| `BenchLog` | `GalleryBench` log markers for the Python harness |
 | `activity_main.xml` | `ScrollView` + vertical container |
 | `activity_preview.xml` | Dual `ImageView` merge-swipe layer + `fitCenter` + prev/next |
 | `item_gallery_image.xml` | Nested cell layout for Phase 1 |
@@ -93,7 +95,8 @@ Phase 1 intentional bottlenecks active:
 
 - Content descriptions include image id on gallery items and preview.
 - Initial scroll position is top of gallery.
-- Results directory: `docs/benchmark/` (empty for now).
+- In-app markers: `gallery_ready`, `preview_ready`, `preview_navigate` via `BenchLog` (`GalleryBench` tag); `reportFullyDrawn()` after gallery grid build.
+- Runner: `python tools/benchmark/run_benchmark.py` → `{prefix}_runs.csv` + `{prefix}_summary.csv` under `docs/benchmark/`.
 - Do not invent or commit fabricated metrics.
 
 ## Files to skip
