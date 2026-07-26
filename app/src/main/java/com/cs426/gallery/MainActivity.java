@@ -24,8 +24,8 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Phase 2 step 3 gallery host: viewport bind loads decode on a bounded background
- * executor; UI bitmap applies stay on the main thread; executor shuts down on destroy.
+ * Phase 2 step 4 gallery host: viewport bind loads decode display-sized thumbnails
+ * on a bounded background executor; preview still opens the original full-resolution file.
  */
 public class MainActivity extends AppCompatActivity {
 

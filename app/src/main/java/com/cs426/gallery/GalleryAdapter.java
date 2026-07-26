@@ -24,9 +24,9 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 
 /**
- * Phase 2 step 3 adapter: bind-time viewport loads decode on a bounded background
- * executor; results post to the main thread and are ignored if the holder was
- * recycled or rebound.
+ * Phase 2 step 4 adapter: bind-time viewport loads decode display-sized thumbnails
+ * on a bounded background executor; results post to the main thread and are ignored
+ * if the holder was recycled or rebound.
  */
 public class GalleryAdapter extends RecyclerView.Adapter<GalleryAdapter.GalleryViewHolder> {
 
@@ -112,10 +112,12 @@ public class GalleryAdapter extends RecyclerView.Adapter<GalleryAdapter.GalleryV
             return;
         }
 
+        final int reqSize = cellSize;
         holder.decodeFuture = decodeExecutor.submit(() -> {
             Bitmap decoded = null;
             try {
-                decoded = decoder.decodeAssetFull(assetPath);
+                // Step 4: decode to roughly cell size (inSampleSize), not original resolution.
+                decoded = decoder.decodeAssetForDisplay(assetPath, reqSize, reqSize);
             } catch (IOException e) {
                 Log.e(TAG, "Failed to decode " + image.getFilename(), e);
             }

@@ -6,17 +6,17 @@ Small Java / Views Android image gallery for a seminar on scrolling performance:
 
 ## Current checked-out version
 
-`v2-step-3-background-decoding`
+`v2-step-4-sized-thumbnails`
 
 ## Current phase status
 
-- **Done:** Through Phase 2 step 3 — bounded background decode executor; main-thread bitmap apply; shutdown on destroy.
-- **Next:** Phase 2 step 4 — sized / `inSampleSize` thumbnails (`v2-step-4-sized-thumbnails`).
-- **Later:** Bounded cache → `v2-optimized`.
+- **Done:** Through Phase 2 step 4 — grid cells use `inSampleSize` / display-sized decode; preview still loads the original file.
+- **Next:** Phase 2 step 5 — bounded `LruCache` (`v2-step-5-bounded-cache`).
+- **Later:** Final verify → `v2-optimized`.
 
 ## Architecture summary
 
-Two activities (`MainActivity`, `PreviewActivity`). Metadata flows through `GalleryRepository` / `DatasetManifestReader` from asset manifests. `ImageDecoder` opens local assets. Gallery UI is a `RecyclerView` grid; `GalleryAdapter` submits bind-time decodes to a bounded `ExecutorService` owned by `MainActivity`.
+Two activities (`MainActivity`, `PreviewActivity`). Metadata flows through `GalleryRepository` / `DatasetManifestReader` from asset manifests. `ImageDecoder` supports full and display-sized asset decode. Gallery UI is a `RecyclerView` grid; `GalleryAdapter` submits bind-time sized decodes to a bounded `ExecutorService` owned by `MainActivity`.
 
 ## Directory map
 
@@ -40,13 +40,13 @@ Two activities (`MainActivity`, `PreviewActivity`). Metadata flows through `Gall
 | Item | Role |
 |------|------|
 | `MainActivity` | RecyclerView host; owns bounded decode executor; opens preview via Intent id/index |
-| `GalleryAdapter` | Bind-time async decode; Future cancel + generation/id guard; recycle clears bitmaps |
+| `GalleryAdapter` | Bind-time async display-sized decode; Future cancel + generation/id guard |
 | `GalleryGridSpacingDecoration` | Column/row spacing matching Phase 1 gaps |
 | `PreviewActivity` | Original-file preview + ActionBar Up; arrows + finger-follow swipe; boundary-aware |
 | `GalleryImage` | Immutable manifest row |
 | `GalleryRepository` | Selected dataset → ordered list + asset paths |
 | `DatasetManifestReader` | Parse/sort `manifest.json` |
-| `ImageDecoder` | Full asset decode (grid + preview; sized decode comes later) |
+| `ImageDecoder` | `decodeAssetFull` (preview) + `decodeAssetForDisplay` (grid / `inSampleSize`) |
 | `BenchLog` | `GalleryBench` log markers for the Python harness |
 | `activity_main.xml` | `RecyclerView` gallery host |
 | `activity_preview.xml` | Dual `ImageView` merge-swipe layer + `fitCenter` + prev/next |
@@ -56,16 +56,16 @@ Two activities (`MainActivity`, `PreviewActivity`). Metadata flows through `Gall
 
 ## Data flow
 
-`manifest.json` (assets) → `DatasetManifestReader` → `GalleryRepository` → `MainActivity` (metadata + executor) → `GalleryAdapter.onBind` → background decode → main-thread apply → Intent (id/index) → `PreviewActivity` → `ImageDecoder` (original file)
+`manifest.json` (assets) → `DatasetManifestReader` → `GalleryRepository` → `MainActivity` (metadata + executor) → `GalleryAdapter.onBind` → background `decodeAssetForDisplay(cellSize)` → main-thread apply → Intent (id/index) → `PreviewActivity` → `decodeAssetFull` (original file)
 
 ## Current performance behavior
 
-After step 3:
+After step 4:
 
 1. **Views:** recycled via `RecyclerView` / `ViewHolder`.
 2. **Viewport load:** decode only on bind; recycle cancels Future + clears bitmaps; generation/id ignore avoids stale apply.
-3. Original-resolution decode for grid cells (no `inSampleSize`).
-4. No reusable cache abstraction.
+3. **Sized thumbnails:** grid uses `inSampleSize` targeted at cell pixels; preview still full original.
+4. No reusable cache abstraction (step 5).
 5. Nested `item_gallery_image` layout.
 6. **Background decode:** bounded fixed pool (2–4 threads); UI updates on main thread; `shutdownNow()` on destroy.
 
@@ -76,9 +76,9 @@ After step 3:
 | `v1-unoptimized` | Created (eager ScrollView baseline) |
 | `v2-step-1-recyclerview` | Created |
 | `v2-step-2-viewport-loading` | Created (primary eval) |
-| `v2-step-3-background-decoding` | Created (this checkout) |
-| `v2-step-4-sized-thumbnails` | Planned (next) |
-| `v2-step-5-bounded-cache` | Planned |
+| `v2-step-3-background-decoding` | Created |
+| `v2-step-4-sized-thumbnails` | Created (this checkout) |
+| `v2-step-5-bounded-cache` | Planned (next) |
 | `v2-optimized` | Planned |
 
 ## Dataset selection

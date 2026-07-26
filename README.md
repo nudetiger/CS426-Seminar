@@ -94,11 +94,11 @@ app/src/main/assets/datasets/{easy|mixed}/
 | `v2-step-1-recyclerview` | RecyclerView grid (tagged) |
 | `v2-step-2-viewport-loading` | Bind-time load (tagged; primary) |
 | `v2-step-3-background-decoding` | Bounded executor (tagged) |
-| `v2-step-4-sized-thumbnails` | Display-sized decode (planned next) |
-| `v2-step-5-bounded-cache` | Bounded `LruCache` |
+| `v2-step-4-sized-thumbnails` | Display-sized decode (tagged) |
+| `v2-step-5-bounded-cache` | Bounded `LruCache` (planned next) |
 | `v2-optimized` | Final verified state |
 
-Current tag: **`v2-step-3-background-decoding`** — bind-time decode on a bounded background pool; main-thread apply; shutdown on destroy.
+Current tag: **`v2-step-4-sized-thumbnails`** — grid cells use `inSampleSize` for cell-sized decode; preview still loads the original file.
 
 ## How to benchmark
 

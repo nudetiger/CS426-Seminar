@@ -16,7 +16,7 @@ android {
         minSdk 24
         targetSdk 35
         versionCode 1
-        versionName "1.0.0-v2-step-3-background-decoding"
+        versionName "1.0.0-v2-step-4-sized-thumbnails"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 
