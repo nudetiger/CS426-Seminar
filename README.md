@@ -96,9 +96,10 @@ app/src/main/assets/datasets/{easy|mixed}/
 | `v2-step-3-background-decoding` | Bounded executor (tagged) |
 | `v2-step-4-sized-thumbnails` | Display-sized decode (tagged) |
 | `v2-step-5-bounded-cache` | Bounded `LruCache` (tagged) |
+| `v2-step-6-scroll-aware-prefetch` | Defer UI bitmap apply while flinging + off-screen cache prefetch (tagged) |
 | `v2-optimized` | Final verified state (planned) |
 
-Current tag: **`v2-step-5-bounded-cache`** — bounded thumbnail `LruCache` keyed by image id + size; no Activity/View refs in the cache.
+Current tag: **`v2-step-6-scroll-aware-prefetch`** — while dragging/settling, skip main-thread `setImageBitmap` for decode completions (cache still fills); prefetch ~2 rows into the bounded thumbnail cache; larger RecyclerView item cache.
 
 ## How to benchmark
 

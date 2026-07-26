@@ -51,6 +51,7 @@ Preserve user-visible behavior and the same dataset/order every step. Tag after 
 | `v2-step-3-background-decoding` | Bounded `ExecutorService`; UI updates on main thread; shutdown on destroy |
 | `v2-step-4-sized-thumbnails` | `inSampleSize` / display-sized grid decode; preview still uses original file |
 | `v2-step-5-bounded-cache` | Bounded `LruCache` keyed by image+size; no Activity/View refs |
+| `v2-step-6-scroll-aware-prefetch` | Defer `setImageBitmap` while flinging; prefetch nearby rows into cache |
 | `v2-optimized` | Final verified state |
 
 Do not mix unrelated refactors into an optimization commit.

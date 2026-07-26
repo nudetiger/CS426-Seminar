@@ -20,17 +20,22 @@ import com.cs426.gallery.image.ThumbnailCache;
 
 import java.io.IOException;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 
 /**
- * Phase 2 step 5 adapter: bind-time display-sized decode with a bounded {@link ThumbnailCache}
- * keyed by image id + size. Cached bitmaps are not recycled by ViewHolders.
+ * Phase 2 step 6 adapter: bind-time display-sized decode with bounded cache, plus
+ * scroll-aware UI applies (defer {@code setImageBitmap} while flinging) and
+ * off-screen prefetch into the cache so scroll pays fewer decode/upload spikes.
  */
 public class GalleryAdapter extends RecyclerView.Adapter<GalleryAdapter.GalleryViewHolder> {
 
     private static final String TAG = "GalleryAdapter";
+    /** Extra rows above/below the visible window to decode into the cache. */
+    private static final int PREFETCH_ROWS = 2;
 
     public interface OnImageClickListener {
         void onImageClick(int imageId, int imageIndex);
@@ -41,12 +46,16 @@ public class GalleryAdapter extends RecyclerView.Adapter<GalleryAdapter.GalleryV
     private final ExecutorService decodeExecutor;
     private final ThumbnailCache thumbnailCache;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    private final Set<String> inflightKeys = Collections.synchronizedSet(new HashSet<>());
 
     private List<GalleryImage> images = Collections.emptyList();
     private int cellSize;
+    private int columnCount = 1;
     @Nullable
     private OnImageClickListener clickListener;
     private boolean shutdown;
+    /** When true, misses still decode into cache but do not touch ImageViews until idle. */
+    private boolean deferUiBitmapApply;
 
     public GalleryAdapter(
             @NonNull GalleryRepository repository,
@@ -63,10 +72,45 @@ public class GalleryAdapter extends RecyclerView.Adapter<GalleryAdapter.GalleryV
         clickListener = listener;
     }
 
+    public void setColumnCount(int columnCount) {
+        this.columnCount = Math.max(1, columnCount);
+    }
+
     public void submit(List<GalleryImage> images, int cellSize) {
         this.images = images != null ? images : Collections.emptyList();
         this.cellSize = Math.max(1, cellSize);
         notifyDataSetChanged();
+    }
+
+    /**
+     * While the list is dragging/settling, skip main-thread bitmap applies for decode
+     * completions (cache is still populated). On resume, apply cache hits to visible cells.
+     */
+    public void setDeferUiBitmapApply(boolean defer, @Nullable RecyclerView recyclerView) {
+        if (deferUiBitmapApply == defer) {
+            return;
+        }
+        deferUiBitmapApply = defer;
+        if (!defer && recyclerView != null) {
+            applyCacheHitsToVisible(recyclerView);
+        }
+    }
+
+    /**
+     * Decode nearby positions into {@link ThumbnailCache} without binding views.
+     * Safe to call from the main thread during scroll; work runs on the decode pool.
+     */
+    public void prefetchAround(int firstVisible, int lastVisible) {
+        if (shutdown || images.isEmpty() || cellSize <= 0) {
+            return;
+        }
+
+        int extra = PREFETCH_ROWS * columnCount;
+        int start = Math.max(0, firstVisible - extra);
+        int end = Math.min(images.size() - 1, lastVisible + extra);
+        for (int position = start; position <= end; position++) {
+            enqueueDecode(position, /* applyToHolder */ null, /* generation */ -1);
+        }
     }
 
     @NonNull
@@ -95,7 +139,6 @@ public class GalleryAdapter extends RecyclerView.Adapter<GalleryAdapter.GalleryV
         GalleryImage image = images.get(position);
         final int imageIndex = position;
         final int imageId = image.getId();
-        final String assetPath = repository.getImageAssetPath(image);
         final int reqSize = cellSize;
         final String cacheKey = ThumbnailCache.key(imageId, reqSize);
 
@@ -124,27 +167,106 @@ public class GalleryAdapter extends RecyclerView.Adapter<GalleryAdapter.GalleryV
             return;
         }
 
-        holder.decodeFuture = decodeExecutor.submit(() -> {
-            Bitmap existing = thumbnailCache.get(cacheKey);
-            if (existing != null && !existing.isRecycled()) {
-                mainHandler.post(() -> applyDecodedBitmap(holder, imageId, generation, existing));
-                return;
+        // Cache miss: always decode into cache; apply to the holder only when not flinging.
+        holder.decodeFuture = enqueueDecode(position, holder, generation);
+    }
+
+    /**
+     * @param holder    if non-null, result may be applied to this holder (unless deferred)
+     * @param generation holder bind generation, or -1 for prefetch-only
+     */
+    @Nullable
+    private Future<?> enqueueDecode(
+            int position,
+            @Nullable GalleryViewHolder holder,
+            int generation) {
+        if (shutdown || position < 0 || position >= images.size() || cellSize <= 0) {
+            return null;
+        }
+
+        GalleryImage image = images.get(position);
+        final int imageId = image.getId();
+        final String assetPath = repository.getImageAssetPath(image);
+        final int reqSize = cellSize;
+        final String cacheKey = ThumbnailCache.key(imageId, reqSize);
+
+        Bitmap existing = thumbnailCache.get(cacheKey);
+        if (existing != null && !existing.isRecycled()) {
+            if (holder != null) {
+                applyDecodedBitmap(holder, imageId, generation, existing);
+            }
+            return null;
+        }
+
+        if (!inflightKeys.add(cacheKey)) {
+            // Another bind/prefetch already decoding this key; holder waits for cache on next idle.
+            return null;
+        }
+
+        try {
+            return decodeExecutor.submit(() -> {
+                Bitmap decoded = null;
+                try {
+                    Bitmap cached = thumbnailCache.get(cacheKey);
+                    if (cached != null && !cached.isRecycled()) {
+                        decoded = cached;
+                    } else {
+                        decoded = decoder.decodeAssetForDisplay(assetPath, reqSize, reqSize);
+                        if (decoded != null) {
+                            thumbnailCache.put(cacheKey, decoded);
+                        }
+                    }
+                } catch (IOException e) {
+                    Log.e(TAG, "Failed to decode " + image.getFilename(), e);
+                } finally {
+                    inflightKeys.remove(cacheKey);
+                }
+
+                if (holder == null) {
+                    return;
+                }
+
+                final Bitmap result = decoded;
+                mainHandler.post(() -> {
+                    if (deferUiBitmapApply) {
+                        // Leave ImageView empty; cache is warm for the next idle pass / rebind.
+                        return;
+                    }
+                    applyDecodedBitmap(holder, imageId, generation, result);
+                });
+            });
+        } catch (RuntimeException e) {
+            inflightKeys.remove(cacheKey);
+            Log.e(TAG, "Failed to submit decode for " + image.getFilename(), e);
+            return null;
+        }
+    }
+
+    private void applyCacheHitsToVisible(@NonNull RecyclerView recyclerView) {
+        for (int i = 0; i < recyclerView.getChildCount(); i++) {
+            RecyclerView.ViewHolder raw = recyclerView.getChildViewHolder(recyclerView.getChildAt(i));
+            if (!(raw instanceof GalleryViewHolder)) {
+                continue;
+            }
+            GalleryViewHolder holder = (GalleryViewHolder) raw;
+            int position = holder.getBindingAdapterPosition();
+            if (position == RecyclerView.NO_POSITION || position >= images.size()) {
+                continue;
+            }
+            if (holder.imageView.getDrawable() != null) {
+                continue;
             }
 
-            Bitmap decoded = null;
-            try {
-                decoded = decoder.decodeAssetForDisplay(assetPath, reqSize, reqSize);
-            } catch (IOException e) {
-                Log.e(TAG, "Failed to decode " + image.getFilename(), e);
+            GalleryImage image = images.get(position);
+            String cacheKey = ThumbnailCache.key(image.getId(), cellSize);
+            Bitmap cached = thumbnailCache.get(cacheKey);
+            if (cached != null && !cached.isRecycled()
+                    && holder.isBindingCurrent(image.getId(), holder.bindGeneration)) {
+                holder.imageView.setImageBitmap(cached);
+            } else if (cached == null) {
+                enqueueDecode(position, holder, holder.bindGeneration);
             }
-
-            if (decoded != null) {
-                thumbnailCache.put(cacheKey, decoded);
-            }
-
-            final Bitmap result = decoded;
-            mainHandler.post(() -> applyDecodedBitmap(holder, imageId, generation, result));
-        });
+        }
     }
 
     private void applyDecodedBitmap(
@@ -153,7 +275,6 @@ public class GalleryAdapter extends RecyclerView.Adapter<GalleryAdapter.GalleryV
             int generation,
             @Nullable Bitmap decoded) {
         if (!holder.isBindingCurrent(imageId, generation) || shutdown) {
-            // Bitmap may already live in the cache; do not recycle here.
             return;
         }
 
@@ -186,6 +307,7 @@ public class GalleryAdapter extends RecyclerView.Adapter<GalleryAdapter.GalleryV
     public void markShutdown() {
         shutdown = true;
         mainHandler.removeCallbacksAndMessages(null);
+        inflightKeys.clear();
     }
 
     /** Detach bitmaps from visible holders (cache still owns recycling via eviction). */
@@ -206,10 +328,9 @@ public class GalleryAdapter extends RecyclerView.Adapter<GalleryAdapter.GalleryV
     }
 
     private static void cancelPendingDecode(@NonNull GalleryViewHolder holder) {
-        if (holder.decodeFuture != null) {
-            holder.decodeFuture.cancel(false);
-            holder.decodeFuture = null;
-        }
+        // Do not Future.cancel(): the decode should still warm ThumbnailCache for nearby cells.
+        // Stale UI applies are ignored via bindGeneration / boundImageId.
+        holder.decodeFuture = null;
     }
 
     private static void clearHolderImage(@NonNull GalleryViewHolder holder) {

@@ -6,17 +6,17 @@ Small Java / Views Android image gallery for a seminar on scrolling performance:
 
 ## Current checked-out version
 
-`v2-step-5-bounded-cache`
+`v2-step-6-scroll-aware-prefetch`
 
 ## Current phase status
 
-- **Done:** Through Phase 2 step 5 — bounded `ThumbnailCache` (`LruCache`) keyed by image id + size; no Activity/View refs in the cache.
+- **Done:** Through Phase 2 step 6 — defer main-thread bitmap applies while flinging; prefetch ~2 rows into `ThumbnailCache`; larger item view cache / layout prefetch.
 - **Next:** Final verify / tag `v2-optimized` when the group accepts this as the complete optimized build.
-- **Later:** Seminar benchmarks comparing `v1-unoptimized` vs optimized tags.
+- **Later:** Seminar benchmarks comparing `v1-unoptimized` vs optimized tags (quiet host; warm vs cold scroll).
 
 ## Architecture summary
 
-Two activities (`MainActivity`, `PreviewActivity`). Metadata flows through `GalleryRepository` / `DatasetManifestReader` from asset manifests. `ImageDecoder` supports full and display-sized asset decode. Gallery UI is a `RecyclerView` grid; `GalleryAdapter` uses a bounded background executor plus `ThumbnailCache` for bind-time loads.
+Two activities (`MainActivity`, `PreviewActivity`). Metadata flows through `GalleryRepository` / `DatasetManifestReader` from asset manifests. `ImageDecoder` supports full and display-sized asset decode. Gallery UI is a `RecyclerView` grid; `GalleryAdapter` uses a bounded background executor plus `ThumbnailCache` for bind-time loads, with scroll-aware UI applies and off-screen prefetch.
 
 ## Directory map
 
@@ -39,8 +39,8 @@ Two activities (`MainActivity`, `PreviewActivity`). Metadata flows through `Gall
 
 | Item | Role |
 |------|------|
-| `MainActivity` | RecyclerView host; owns decode executor + thumbnail cache; opens preview via Intent id/index |
-| `GalleryAdapter` | Bind-time async display-sized decode with cache hit/miss; Future cancel + generation guard |
+| `MainActivity` | RecyclerView host; scroll listener defers UI applies + triggers prefetch; owns executor + cache |
+| `GalleryAdapter` | Bind-time async display-sized decode; cache hit/miss; defer apply while flinging; prefetch into cache |
 | `ThumbnailCache` | Bounded `LruCache` keyed by `imageId@sizePx`; recycles on eviction; no Activity/View refs |
 | `GalleryGridSpacingDecoration` | Column/row spacing matching Phase 1 gaps |
 | `PreviewActivity` | Original-file preview + ActionBar Up; arrows + finger-follow swipe; boundary-aware |
@@ -57,18 +57,20 @@ Two activities (`MainActivity`, `PreviewActivity`). Metadata flows through `Gall
 
 ## Data flow
 
-`manifest.json` (assets) → `DatasetManifestReader` → `GalleryRepository` → `MainActivity` (metadata + executor + cache) → `GalleryAdapter.onBind` → cache hit or background `decodeAssetForDisplay` → main-thread apply → Intent (id/index) → `PreviewActivity` → `decodeAssetFull` (original file)
+`manifest.json` (assets) → `DatasetManifestReader` → `GalleryRepository` → `MainActivity` (metadata + executor + cache) → `GalleryAdapter.onBind` / prefetch → cache hit or background `decodeAssetForDisplay` → main-thread apply when idle → Intent (id/index) → `PreviewActivity` → `decodeAssetFull` (original file)
 
 ## Current performance behavior
 
-After step 5:
+After step 6:
 
-1. **Views:** recycled via `RecyclerView` / `ViewHolder`.
-2. **Viewport load:** decode only on bind (miss); recycle cancels Future; generation/id ignore avoids stale apply.
+1. **Views:** recycled via `RecyclerView` / `ViewHolder`; larger item view cache + layout manager prefetch.
+2. **Viewport load:** decode only on bind/prefetch miss; generation/id ignore avoids stale apply.
 3. **Sized thumbnails:** grid uses `inSampleSize` targeted at cell pixels; preview still full original.
 4. **Bounded cache:** `LruCache` (~1/8 max heap) keyed by image+size; eviction recycles bitmaps; cleared on destroy.
-5. Nested `item_gallery_image` layout.
-6. **Background decode:** bounded fixed pool (2–4 threads); UI updates on main thread; `shutdownNow()` on destroy.
+5. **Scroll-aware apply:** while dragging/settling, skip `setImageBitmap` for decode completions (cache still fills); on idle, apply cache hits to visible cells.
+6. **Prefetch:** ~2 rows above/below visible window decode into cache without binding.
+7. Nested `item_gallery_image` layout.
+8. **Background decode:** bounded fixed pool (2–4 threads); UI updates on main thread; `shutdownNow()` on destroy.
 
 ## Version/tag map
 
@@ -79,7 +81,8 @@ After step 5:
 | `v2-step-2-viewport-loading` | Created (primary eval) |
 | `v2-step-3-background-decoding` | Created |
 | `v2-step-4-sized-thumbnails` | Created |
-| `v2-step-5-bounded-cache` | Created (this checkout) |
+| `v2-step-5-bounded-cache` | Created |
+| `v2-step-6-scroll-aware-prefetch` | Created (this checkout) |
 | `v2-optimized` | Planned (final verified alias) |
 
 ## Dataset selection
@@ -95,9 +98,10 @@ After step 5:
 
 - Content descriptions include image id on gallery items and preview.
 - Initial scroll position is top of gallery.
-- In-app markers: `gallery_ready`, `preview_ready`, `preview_navigate` via `BenchLog` (`GalleryBench` tag); `reportFullyDrawn()` after grid submit (visible cells may still fill in async).
+- In-app markers: `gallery_ready`, `preview_ready`, `preview_navigate` via `BenchLog` (`GalleryBench` tag); `reportFullyDrawn()` after grid submit (visible cells may still fill in async; prefetch starts after submit).
 - Runner: `python tools/benchmark/run_benchmark.py` → `{prefix}_runs.csv` + `{prefix}_summary.csv` under `docs/benchmark/`.
 - Do not invent or commit fabricated metrics.
+- Scroll comparisons are sensitive to host load (emulator shares CPU/GPU); prefer quiet-host re-runs for v1 vs v2.
 
 ## Files to skip
 
