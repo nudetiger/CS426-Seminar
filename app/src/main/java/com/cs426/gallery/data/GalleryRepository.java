@@ -27,7 +27,7 @@ public class GalleryRepository {
     }
 
     /**
-     * Returns images oldest-first from {@code assets/datasets/{easy|mixed}/manifest.json}.
+     * Returns images oldest-first from {@code assets/datasets/<name>/manifest.json}.
      * Image files live under {@code assets/datasets/.../images/}.
      */
     public List<GalleryImage> loadImages() throws IOException {

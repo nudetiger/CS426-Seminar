@@ -6,13 +6,13 @@ Small Java / Views Android image gallery for a seminar on scrolling performance:
 
 ## Current checked-out version
 
-`v2-step-6-scroll-aware-prefetch`
+`v2-optimized` (final Phase 2 state; same gallery behavior as `v2-step-6-scroll-aware-prefetch`)
 
 ## Current phase status
 
-- **Done:** Through Phase 2 step 6 — defer main-thread bitmap applies while flinging; prefetch ~2 rows into `ThumbnailCache`; larger item view cache / layout prefetch.
-- **Next:** Final verify / tag `v2-optimized` when the group accepts this as the complete optimized build.
-- **Later:** Seminar benchmarks comparing `v1-unoptimized` vs optimized tags (quiet host; warm vs cold scroll).
+- **Done:** Phase 1 baseline + Phase 2 steps 1–6; final alias tag `v2-optimized`. Unified dataset generator; multi-version adb benchmark harness.
+- **Next:** Run seminar benchmarks on a quiet host (`--versions v1-unoptimized,v2-optimized`, warm vs cold scroll as needed).
+- **Later:** Report / interpret measured CSV (do not invent numbers in-repo).
 
 ## Architecture summary
 
@@ -27,11 +27,12 @@ Two activities (`MainActivity`, `PreviewActivity`). Metadata flows through `Gall
 | `.../data/` | `GalleryImage`, repository, manifest reader |
 | `.../image/` | Decode helpers + `ThumbnailCache` |
 | `app/src/main/res/layout/` | Gallery, preview, item XML |
-| `app/src/main/assets/datasets/` | Runtime easy/mixed assets (manifest + images) |
-| `tools/datasets/` | Python generators + asset sync helper |
-| `tools/benchmark/` | Automated adb benchmark CLI → CSV |
+| `app/src/main/assets/datasets/` | Runtime dataset assets (manifest + images) |
+| `tools/datasets/` | Unified dataset generator + asset sync |
+| `tools/benchmark/` | Automated adb benchmark CLI → CSV (`--tag` or `--versions`) |
 | `datasets/generated/` | Generator output (images usually not committed) |
 | `docs/benchmark/` | Benchmark CSV output (contents gitignored) |
+| `.bench-worktrees/` | Temp git worktrees for `--versions` (gitignored) |
 | `PROJECT_CONTEXT.md` | This navigation map |
 | `README.md` | Setup, run, and benchmark docs |
 
@@ -54,6 +55,8 @@ Two activities (`MainActivity`, `PreviewActivity`). Metadata flows through `Gall
 | `item_gallery_image.xml` | Nested cell layout (unchanged visually) |
 | `app/build.gradle` | AGP module; `-PgalleryDataset=` → `BuildConfig` |
 | `gradle.properties` | Default `galleryDataset=mixed` |
+| `tools/datasets/generate_dataset.py` | `--profile easy\|mixed` generator |
+| `tools/benchmark/run_benchmark.py` | Single- or multi-version (`--versions`) CSV harness |
 
 ## Data flow
 
@@ -61,7 +64,7 @@ Two activities (`MainActivity`, `PreviewActivity`). Metadata flows through `Gall
 
 ## Current performance behavior
 
-After step 6:
+After step 6 / `v2-optimized`:
 
 1. **Views:** recycled via `RecyclerView` / `ViewHolder`; larger item view cache + layout manager prefetch.
 2. **Viewport load:** decode only on bind/prefetch miss; generation/id ignore avoids stale apply.
@@ -82,15 +85,17 @@ After step 6:
 | `v2-step-3-background-decoding` | Created |
 | `v2-step-4-sized-thumbnails` | Created |
 | `v2-step-5-bounded-cache` | Created |
-| `v2-step-6-scroll-aware-prefetch` | Created (this checkout) |
-| `v2-optimized` | Planned (final verified alias) |
+| `v2-step-6-scroll-aware-prefetch` | Created |
+| `v2-optimized` | Created (final verified alias; this tip) |
 
 ## Dataset selection
 
-- Gradle property `galleryDataset` = `easy` \| `mixed` (default **mixed** in `gradle.properties`).
+- Generator: `python tools/datasets/generate_dataset.py --profile easy|mixed` → `datasets/generated/<name>/` (name defaults to profile). Flags: `--count`, `--seed`, `--name`, `--force-replace`, `--sync`.
+- Sync: `--sync` on generate, or `python tools/datasets/sync_datasets_to_assets.py [--dataset NAME|all]`.
+- Gradle property `galleryDataset` = assets folder name (default **mixed** in `gradle.properties`; usually `easy` \| `mixed`).
 - Exposed as `BuildConfig.GALLERY_DATASET`.
 - Example: `./gradlew :app:assembleDebug -PgalleryDataset=easy`
-- Generators use seed **2026**. Easy: 256×256 (~75 MiB ARGB decoded). Mixed: 210 low / 60 medium / 30 high long-edge tiers; budget **180 MiB** (~57.5 MiB estimated).
+- Defaults: seed **2026**, count **300**. Easy: 256×256 (~75 MiB ARGB decoded). Mixed: 210 low / 60 medium / 30 high long-edge tiers; budget **180 MiB** (~57.5 MiB estimated).
 - Grid: **4 columns** (`R.integer.gallery_column_count`), square cells, `fitCenter`.
 - Theme knobs (`themes.xml` / `colors.xml`): `galleryBackground` (gap), `galleryCellLetterbox`, `previewLetterbox`.
 
@@ -100,12 +105,14 @@ After step 6:
 - Initial scroll position is top of gallery.
 - In-app markers: `gallery_ready`, `preview_ready`, `preview_navigate` via `BenchLog` (`GalleryBench` tag); `reportFullyDrawn()` after grid submit (visible cells may still fill in async; prefetch starts after submit).
 - Runner: `python tools/benchmark/run_benchmark.py` → `{prefix}_runs.csv` + `{prefix}_summary.csv` under `docs/benchmark/`.
+- Multi-version: `--versions v1-unoptimized,v2-optimized` (worktrees under `.bench-worktrees/`; tip harness; shared dataset from tip assets or `datasets/generated/`).
+- If `adb` missing from PATH (PowerShell): `$env:Path += ";C:\Users\Admin\AppData\Local\Android\Sdk\platform-tools"`.
 - Do not invent or commit fabricated metrics.
 - Scroll comparisons are sensitive to host load (emulator shares CPU/GPU); prefer quiet-host re-runs for v1 vs v2.
 
 ## Files to skip
 
-`build/`, `.gradle/`, `.idea/`, `local.properties`, generated images under `datasets/generated/**/images/` and mirrored asset images, `APP_INSTRUCTIONS.md` (local instructions; do not commit per project rules), IDE/profiler noise.
+`build/`, `.gradle/`, `.idea/`, `local.properties`, `.bench-worktrees/`, generated images under `datasets/generated/**/images/` and mirrored asset images, `APP_INSTRUCTIONS.md` (local instructions; do not commit per project rules), IDE/profiler noise.
 
 ## Important constraints
 

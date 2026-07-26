@@ -53,7 +53,8 @@ def run_adb(
         )
     except FileNotFoundError as exc:
         raise AdbError(
-            "adb not found on PATH. Install Android platform-tools and retry."
+            "adb not found on PATH. Install Android platform-tools and retry. "
+            'PowerShell: $env:Path += ";C:\\Users\\Admin\\AppData\\Local\\Android\\Sdk\\platform-tools"'
         ) from exc
     except subprocess.TimeoutExpired as exc:
         raise AdbError(f"adb timed out: {' '.join(cmd)}") from exc

@@ -3,8 +3,11 @@ plugins {
 }
 
 def selectedDataset = (findProperty('galleryDataset') ?: 'mixed').toString()
-if (!(selectedDataset in ['easy', 'mixed'])) {
-    throw new GradleException("galleryDataset must be 'easy' or 'mixed', was: ${selectedDataset}")
+// Folder name under assets/datasets/ — usually easy|mixed; custom names from generate_dataset.py --name.
+if (!(selectedDataset ==~ /^[A-Za-z0-9][A-Za-z0-9_-]*$/)) {
+    throw new GradleException(
+        "galleryDataset must be a simple folder name (letters, digits, _-, starting alphanumeric); was: ${selectedDataset}"
+    )
 }
 
 android {
@@ -16,7 +19,7 @@ android {
         minSdk 24
         targetSdk 35
         versionCode 1
-        versionName "1.0.0-v2-step-5-bounded-cache"
+        versionName "1.0.0-v2-optimized"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 

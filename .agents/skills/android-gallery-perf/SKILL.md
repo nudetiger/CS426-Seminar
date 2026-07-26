@@ -54,8 +54,6 @@ Preserve user-visible behavior and the same dataset/order every step. Tag after 
 | `v2-step-6-scroll-aware-prefetch` | Defer `setImageBitmap` while flinging; prefetch nearby rows into cache |
 | `v2-optimized` | Final verified state |
 
-Do not mix unrelated refactors into an optimization commit.
-
 ## Behavior checklist
 
 - Order: oldest top → newest bottom; deterministic (manifest/filename), not raw FS order.
@@ -68,8 +66,10 @@ Do not mix unrelated refactors into an optimization commit.
 
 Scripts under `tools/datasets/` (Python + Pillow, offline, deterministic seed):
 
-- `generate_easy_dataset.py` → 300 uniform square images + `manifest.json`
-- `generate_mixed_dataset.py` → 300 varied res/aspect + budget check for Phase 1 decoded memory
+- `generate_dataset.py --profile easy|mixed` → `datasets/generated/<name>/` (name defaults to profile; optional `--count`, `--seed`, `--force-replace`, `--sync`)
+- `easy` → 300 uniform square images + `manifest.json`
+- `mixed` → 300 varied res/aspect + budget check for Phase 1 decoded memory
+- `sync_datasets_to_assets.py` → copy into `app/src/main/assets/datasets/<name>/`
 
 Same generated files for any Phase 1 vs Phase 2 comparison. Record seed/commit policy in README.
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Copy generated datasets into app/src/main/assets/datasets/{easy|mixed}/."""
+"""Copy generated datasets into app/src/main/assets/datasets/<name>/."""
 
 from __future__ import annotations
 
@@ -24,13 +24,25 @@ def sync_one(src: Path, dest: Path) -> None:
     print(f"Synced {src} -> {dest} ({image_count} jpg + manifest)")
 
 
+def discover_names(generated_root: Path) -> list[str]:
+    if not generated_root.is_dir():
+        return []
+    names: list[str] = []
+    for child in sorted(generated_root.iterdir()):
+        if child.is_dir() and (child / "manifest.json").is_file():
+            names.append(child.name)
+    return names
+
+
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Sync generated datasets into Android assets.")
+    parser = argparse.ArgumentParser(
+        description="Sync generated datasets into Android assets.",
+    )
     parser.add_argument(
         "--generated-root",
         type=Path,
         default=Path("datasets/generated"),
-        help="Root containing easy/ and mixed/",
+        help="Root containing named dataset folders",
     )
     parser.add_argument(
         "--assets-root",
@@ -40,13 +52,26 @@ def main() -> int:
     )
     parser.add_argument(
         "--dataset",
-        choices=("easy", "mixed", "all"),
+        "-d",
         default="all",
-        help="Which dataset to sync",
+        help=(
+            "Dataset folder name to sync, or 'all' for every folder under "
+            "--generated-root that has a manifest.json (default: all)."
+        ),
     )
     args = parser.parse_args()
 
-    names = ("easy", "mixed") if args.dataset == "all" else (args.dataset,)
+    if args.dataset == "all":
+        names = discover_names(args.generated_root)
+        if not names:
+            print(
+                f"ERROR: no datasets with manifest.json under {args.generated_root}",
+                file=sys.stderr,
+            )
+            return 1
+    else:
+        names = [args.dataset]
+
     try:
         for name in names:
             sync_one(args.generated_root / name, args.assets_root / name)

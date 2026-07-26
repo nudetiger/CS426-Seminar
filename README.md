@@ -55,12 +55,12 @@ Default dataset property: **`mixed`** (`gradle.properties` → `galleryDataset=m
 
 ## Datasets
 
-Two offline **300-image** JPEG datasets (seed **2026**):
+One generator (`tools/datasets/generate_dataset.py`) with two default **profiles** (`easy`, `mixed`). By default the output folder **name** matches the profile. Seminar defaults: **300** images, seed **2026**.
 
-| Name | Purpose | Notes |
-|------|---------|-------|
+| Profile | Purpose | Notes |
+|---------|---------|-------|
 | `easy` | Uniform square images | 256×256; ~75 MiB estimated ARGB_8888 if all decoded |
-| `mixed` | Varied resolution/aspect | 210 low / 60 medium / 30 high long-edge; aspects 1:1, 4:3, 3:4, 16:9, 9:16; fails if decoded estimate exceeds **180 MiB** budget (~57.5 MiB with defaults) |
+| `mixed` | Varied resolution/aspect | ~70/20/10 low/medium/high long-edge (210/60/30 at count 300); aspects 1:1, 4:3, 3:4, 16:9, 9:16; fails if decoded estimate exceeds **180 MiB** budget (~57.5 MiB with defaults) |
 
 Manifest fields: `id`, `filename`, `timestamp`, `width`, `height` (mixed also records `tier` / `aspect`). Order: oldest → newest by timestamp then id.
 
@@ -69,15 +69,21 @@ Manifest fields: `id`, `filename`, `timestamp`, `width`, `height` (mixed also re
 From the project root:
 
 ```bash
-python tools/datasets/generate_easy_dataset.py --output datasets/generated/easy --seed 2026
-python tools/datasets/generate_mixed_dataset.py --output datasets/generated/mixed --seed 2026
-python tools/datasets/sync_datasets_to_assets.py
+# Default seminar datasets (name defaults to profile)
+python tools/datasets/generate_dataset.py --profile easy --force-replace --sync
+python tools/datasets/generate_dataset.py --profile mixed --force-replace --sync
+
+# Custom count / seed / folder name
+python tools/datasets/generate_dataset.py --profile mixed --count 300 --seed 2026 --name mixed --force-replace
+python tools/datasets/sync_datasets_to_assets.py --dataset mixed
 ```
+
+Useful flags: `--profile` / `-p`, `--name` / `-n`, `--count` / `-c`, `--seed` / `-s`, `--force-replace` / `-f` (otherwise prompted if the folder exists), `--sync`, `--size` (easy), `--budget-mib` (mixed).
 
 Asset layout after sync:
 
 ```text
-app/src/main/assets/datasets/{easy|mixed}/
+app/src/main/assets/datasets/<name>/
 ├── images/
 │   ├── image_0001.jpg
 │   └── ...
@@ -97,9 +103,9 @@ app/src/main/assets/datasets/{easy|mixed}/
 | `v2-step-4-sized-thumbnails` | Display-sized decode (tagged) |
 | `v2-step-5-bounded-cache` | Bounded `LruCache` (tagged) |
 | `v2-step-6-scroll-aware-prefetch` | Defer UI bitmap apply while flinging + off-screen cache prefetch (tagged) |
-| `v2-optimized` | Final verified state (planned) |
+| `v2-optimized` | Final verified optimized state (alias of the completed Phase 2 build) |
 
-Current tag: **`v2-step-6-scroll-aware-prefetch`** — while dragging/settling, skip main-thread `setImageBitmap` for decode completions (cache still fills); prefetch ~2 rows into the bounded thumbnail cache; larger RecyclerView item cache.
+Current tag: **`v2-optimized`** — same app behavior as step 6 (scroll-aware apply + prefetch), plus the unified dataset generator and multi-version benchmark harness on this tip.
 
 ## How to benchmark
 
@@ -110,16 +116,34 @@ Measurements use in-app `SystemClock` markers and system frame dumps, so the Pyt
 ### Prerequisites
 
 1. Unlocked emulator or device with USB debugging (`adb devices` shows `device`).
-2. App installed for the dataset you intend to measure (or pass `--install`).
+2. App installed for the dataset you intend to measure (or pass `--install` / use `--versions`).
 3. `adb` on `PATH` (Android SDK platform-tools).
+
+If `adb` is not on `PATH` (Windows PowerShell session):
+
+```powershell
+$env:Path += ";C:\Users\Admin\AppData\Local\Android\Sdk\platform-tools"
+```
+
+Adjust the SDK path if your Android SDK lives elsewhere (`%LOCALAPPDATA%\Android\Sdk\platform-tools` is the usual default).
+
+### Pipeline
+
+1. **Generate** a dataset (`--profile easy|mixed`, optional `--count` / `--seed` / `--name`).
+2. **Sync** into assets (`--sync` on generate, or `sync_datasets_to_assets.py`).
+3. **Benchmark** that dataset — single build (`--tag` + optional `--install`) or several git tags (`--versions`).
 
 ### Run
 
 From the project root:
 
 ```bash
-# Device connected; app already installed (mixed dataset build)
-python tools/benchmark/run_benchmark.py --tag v1-unoptimized --iterations 10
+# Generate + sync mixed, then measure the current tree
+python tools/datasets/generate_dataset.py --profile mixed --force-replace --sync
+python tools/benchmark/run_benchmark.py --install --dataset mixed --tag v2-optimized --iterations 10
+
+# Multi-version sweep (temporary git worktrees; installs each tag's APK; tip harness)
+python tools/benchmark/run_benchmark.py --versions v1-unoptimized,v2-optimized --dataset mixed --iterations 10 --output-dir docs/benchmark
 
 # Rebuild/install easy dataset, then run a subset
 python tools/benchmark/run_benchmark.py --install --dataset easy --scenarios cold_startup,scroll_gallery --iterations 5 --tag v1-easy
@@ -128,7 +152,9 @@ python tools/benchmark/run_benchmark.py --install --dataset easy --scenarios col
 python tools/benchmark/run_benchmark.py --tag v2-optimized --warmup 2 --iterations 15 --swipe-count 8 --scroll-flings 12 --output-dir docs/benchmark
 ```
 
-On Windows, use the same commands; `--install` invokes `gradlew.bat` when present.
+On Windows, use the same commands; `--install` / `--versions` invoke `gradlew.bat` when present.
+
+`--versions` does **not** require checking out tags in your working tree. For each ref it creates `.bench-worktrees/<ref>`, copies the tip dataset into that tree’s assets, runs `installDebug`, measures with this tip runner, then removes the worktree. CSV `--tag` is set to each ref. Use `--keep-going` to continue after a failed version.
 
 ### Useful flags
 
@@ -137,15 +163,17 @@ On Windows, use the same commands; `--install` invokes `gradlew.bat` when presen
 | `--iterations` | `10` | Measured runs per scenario |
 | `--warmup` | `1` | Discarded runs before measurement |
 | `--scenarios` | all five | Comma list: `cold_startup,open_preview,swipe_preview,scroll_gallery,memory` |
-| `--dataset` | `mixed` | CSV label; with `--install`, passed as `-PgalleryDataset=` |
-| `--install` | off | `installDebug` before the suite |
-| `--tag` | `untagged` | Label column in CSV (e.g. git tag name) |
+| `--dataset` | `mixed` | Assets folder name / CSV label; with install, passed as `-PgalleryDataset=` |
+| `--install` | off | `installDebug` before a single-version suite |
+| `--tag` | `untagged` | CSV label for a single-version run (do not combine with `--versions`) |
+| `--versions` | off | Comma-separated git refs; worktree + install + measure each (implies install) |
+| `--keep-going` | off | With `--versions`, continue after a version fails |
 | `--preview-index` | `0` | Zero-based cell to open (id ≈ index+1) |
 | `--swipe-count` | `5` | Next-arrow steps per `swipe_preview` run |
 | `--scroll-flings` | `8` | Swipes per `scroll_gallery` run |
 | `--timeout-sec` | `180` | Wait budget for Phase 1 cold start |
 | `--output-dir` | `docs/benchmark/` | CSV directory |
-| `--output-prefix` | `<tag>_<dataset>_<utc>` | Filename prefix |
+| `--output-prefix` | `<tag>_<dataset>_<utc>` | Filename prefix (single-version / single-ref only) |
 
 ### Scenarios
 

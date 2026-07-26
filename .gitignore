@@ -54,5 +54,8 @@ docs/benchmark/**
 *.perfetto-trace
 *.trace
 
+# Temporary git worktrees used by tools/benchmark/run_benchmark.py --versions
+.bench-worktrees/
+
 # Instruction source of truth stays local to the workspace; do not commit if following APP_INSTRUCTIONS §17
 APP_INSTRUCTIONS.md
