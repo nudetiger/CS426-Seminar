@@ -14,6 +14,7 @@ import com.cs426.gallery.bench.BenchLog;
 import com.cs426.gallery.data.GalleryImage;
 import com.cs426.gallery.data.GalleryRepository;
 import com.cs426.gallery.image.ImageDecoder;
+import com.cs426.gallery.image.ThumbnailCache;
 
 import java.io.IOException;
 import java.util.Collections;
@@ -24,8 +25,8 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Phase 2 step 4 gallery host: viewport bind loads decode display-sized thumbnails
- * on a bounded background executor; preview still opens the original full-resolution file.
+ * Phase 2 step 5 gallery host: viewport bind loads with display-sized decode plus a
+ * bounded {@link ThumbnailCache}; executor and cache are torn down on destroy.
  */
 public class MainActivity extends AppCompatActivity {
 
@@ -35,6 +36,8 @@ public class MainActivity extends AppCompatActivity {
     private GalleryAdapter galleryAdapter;
     @Nullable
     private ExecutorService decodeExecutor;
+    @Nullable
+    private ThumbnailCache thumbnailCache;
     private List<GalleryImage> images = Collections.emptyList();
     private boolean gridReady;
     private long createElapsedRealtime;
@@ -57,8 +60,9 @@ public class MainActivity extends AppCompatActivity {
         GalleryRepository repository = new GalleryRepository(this);
         ImageDecoder decoder = new ImageDecoder(this);
         decodeExecutor = createDecodeExecutor();
+        thumbnailCache = new ThumbnailCache(ThumbnailCache.defaultMaxSizeBytes());
 
-        galleryAdapter = new GalleryAdapter(repository, decoder, decodeExecutor);
+        galleryAdapter = new GalleryAdapter(repository, decoder, decodeExecutor, thumbnailCache);
         galleryAdapter.setOnImageClickListener(this::openPreview);
         galleryRecycler.setAdapter(galleryAdapter);
 
@@ -107,7 +111,6 @@ public class MainActivity extends AppCompatActivity {
 
         galleryAdapter.submit(images, cellSize);
         gridReady = true;
-        // Grid is laid out; visible cells decode asynchronously on the executor.
         galleryRecycler.post(() -> {
             if (isFinishing()) {
                 return;
@@ -153,6 +156,10 @@ public class MainActivity extends AppCompatActivity {
         if (decodeExecutor != null) {
             decodeExecutor.shutdownNow();
             decodeExecutor = null;
+        }
+        if (thumbnailCache != null) {
+            thumbnailCache.clear();
+            thumbnailCache = null;
         }
         super.onDestroy();
     }

@@ -16,6 +16,7 @@ import androidx.recyclerview.widget.RecyclerView;
 import com.cs426.gallery.data.GalleryImage;
 import com.cs426.gallery.data.GalleryRepository;
 import com.cs426.gallery.image.ImageDecoder;
+import com.cs426.gallery.image.ThumbnailCache;
 
 import java.io.IOException;
 import java.util.Collections;
@@ -24,9 +25,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 
 /**
- * Phase 2 step 4 adapter: bind-time viewport loads decode display-sized thumbnails
- * on a bounded background executor; results post to the main thread and are ignored
- * if the holder was recycled or rebound.
+ * Phase 2 step 5 adapter: bind-time display-sized decode with a bounded {@link ThumbnailCache}
+ * keyed by image id + size. Cached bitmaps are not recycled by ViewHolders.
  */
 public class GalleryAdapter extends RecyclerView.Adapter<GalleryAdapter.GalleryViewHolder> {
 
@@ -39,6 +39,7 @@ public class GalleryAdapter extends RecyclerView.Adapter<GalleryAdapter.GalleryV
     private final GalleryRepository repository;
     private final ImageDecoder decoder;
     private final ExecutorService decodeExecutor;
+    private final ThumbnailCache thumbnailCache;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
 
     private List<GalleryImage> images = Collections.emptyList();
@@ -50,10 +51,12 @@ public class GalleryAdapter extends RecyclerView.Adapter<GalleryAdapter.GalleryV
     public GalleryAdapter(
             @NonNull GalleryRepository repository,
             @NonNull ImageDecoder decoder,
-            @NonNull ExecutorService decodeExecutor) {
+            @NonNull ExecutorService decodeExecutor,
+            @NonNull ThumbnailCache thumbnailCache) {
         this.repository = repository;
         this.decoder = decoder;
         this.decodeExecutor = decodeExecutor;
+        this.thumbnailCache = thumbnailCache;
     }
 
     public void setOnImageClickListener(@Nullable OnImageClickListener listener) {
@@ -87,12 +90,15 @@ public class GalleryAdapter extends RecyclerView.Adapter<GalleryAdapter.GalleryV
         }
 
         cancelPendingDecode(holder);
-        clearHolderBitmap(holder);
+        clearHolderImage(holder);
 
         GalleryImage image = images.get(position);
         final int imageIndex = position;
         final int imageId = image.getId();
         final String assetPath = repository.getImageAssetPath(image);
+        final int reqSize = cellSize;
+        final String cacheKey = ThumbnailCache.key(imageId, reqSize);
+
         holder.boundImageId = imageId;
         holder.bindGeneration++;
         final int generation = holder.bindGeneration;
@@ -100,7 +106,6 @@ public class GalleryAdapter extends RecyclerView.Adapter<GalleryAdapter.GalleryV
         holder.imageView.setContentDescription(
                 holder.itemView.getContext()
                         .getString(R.string.gallery_item_cd_indexed, imageId));
-        holder.imageView.setImageDrawable(null);
 
         holder.itemView.setOnClickListener(v -> {
             if (clickListener != null) {
@@ -108,18 +113,33 @@ public class GalleryAdapter extends RecyclerView.Adapter<GalleryAdapter.GalleryV
             }
         });
 
+        Bitmap cached = thumbnailCache.get(cacheKey);
+        if (cached != null && !cached.isRecycled()) {
+            holder.imageView.setImageBitmap(cached);
+            return;
+        }
+
+        holder.imageView.setImageDrawable(null);
         if (shutdown) {
             return;
         }
 
-        final int reqSize = cellSize;
         holder.decodeFuture = decodeExecutor.submit(() -> {
+            Bitmap existing = thumbnailCache.get(cacheKey);
+            if (existing != null && !existing.isRecycled()) {
+                mainHandler.post(() -> applyDecodedBitmap(holder, imageId, generation, existing));
+                return;
+            }
+
             Bitmap decoded = null;
             try {
-                // Step 4: decode to roughly cell size (inSampleSize), not original resolution.
                 decoded = decoder.decodeAssetForDisplay(assetPath, reqSize, reqSize);
             } catch (IOException e) {
                 Log.e(TAG, "Failed to decode " + image.getFilename(), e);
+            }
+
+            if (decoded != null) {
+                thumbnailCache.put(cacheKey, decoded);
             }
 
             final Bitmap result = decoded;
@@ -133,15 +153,12 @@ public class GalleryAdapter extends RecyclerView.Adapter<GalleryAdapter.GalleryV
             int generation,
             @Nullable Bitmap decoded) {
         if (!holder.isBindingCurrent(imageId, generation) || shutdown) {
-            if (decoded != null && !decoded.isRecycled()) {
-                decoded.recycle();
-            }
+            // Bitmap may already live in the cache; do not recycle here.
             return;
         }
 
         holder.decodeFuture = null;
-        if (decoded != null) {
-            holder.boundBitmap = decoded;
+        if (decoded != null && !decoded.isRecycled()) {
             holder.imageView.setImageBitmap(decoded);
         } else {
             holder.imageView.setImageDrawable(null);
@@ -153,7 +170,7 @@ public class GalleryAdapter extends RecyclerView.Adapter<GalleryAdapter.GalleryV
         cancelPendingDecode(holder);
         holder.bindGeneration++;
         holder.boundImageId = GalleryViewHolder.NO_ID;
-        clearHolderBitmap(holder);
+        clearHolderImage(holder);
         holder.itemView.setOnClickListener(null);
         super.onViewRecycled(holder);
     }
@@ -164,14 +181,14 @@ public class GalleryAdapter extends RecyclerView.Adapter<GalleryAdapter.GalleryV
     }
 
     /**
-     * Stop accepting new decode work callbacks. The Activity owns executor shutdown.
+     * Stop accepting new decode work callbacks. The Activity owns executor/cache teardown.
      */
     public void markShutdown() {
         shutdown = true;
         mainHandler.removeCallbacksAndMessages(null);
     }
 
-    /** Drop any bitmaps still held by visible holders (call before Activity teardown). */
+    /** Detach bitmaps from visible holders (cache still owns recycling via eviction). */
     public void releaseBitmaps(@Nullable RecyclerView recyclerView) {
         if (recyclerView == null) {
             return;
@@ -183,7 +200,7 @@ public class GalleryAdapter extends RecyclerView.Adapter<GalleryAdapter.GalleryV
                 cancelPendingDecode(holder);
                 holder.bindGeneration++;
                 holder.boundImageId = GalleryViewHolder.NO_ID;
-                clearHolderBitmap(holder);
+                clearHolderImage(holder);
             }
         }
     }
@@ -195,12 +212,9 @@ public class GalleryAdapter extends RecyclerView.Adapter<GalleryAdapter.GalleryV
         }
     }
 
-    private static void clearHolderBitmap(@NonNull GalleryViewHolder holder) {
+    private static void clearHolderImage(@NonNull GalleryViewHolder holder) {
+        // Do not recycle: thumbnails may still be referenced by ThumbnailCache.
         holder.imageView.setImageDrawable(null);
-        if (holder.boundBitmap != null && !holder.boundBitmap.isRecycled()) {
-            holder.boundBitmap.recycle();
-        }
-        holder.boundBitmap = null;
     }
 
     static final class GalleryViewHolder extends RecyclerView.ViewHolder {
@@ -209,8 +223,6 @@ public class GalleryAdapter extends RecyclerView.Adapter<GalleryAdapter.GalleryV
         final ImageView imageView;
         int boundImageId = NO_ID;
         int bindGeneration;
-        @Nullable
-        Bitmap boundBitmap;
         @Nullable
         Future<?> decodeFuture;
 

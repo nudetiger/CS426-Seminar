@@ -6,17 +6,17 @@ Small Java / Views Android image gallery for a seminar on scrolling performance:
 
 ## Current checked-out version
 
-`v2-step-4-sized-thumbnails`
+`v2-step-5-bounded-cache`
 
 ## Current phase status
 
-- **Done:** Through Phase 2 step 4 — grid cells use `inSampleSize` / display-sized decode; preview still loads the original file.
-- **Next:** Phase 2 step 5 — bounded `LruCache` (`v2-step-5-bounded-cache`).
-- **Later:** Final verify → `v2-optimized`.
+- **Done:** Through Phase 2 step 5 — bounded `ThumbnailCache` (`LruCache`) keyed by image id + size; no Activity/View refs in the cache.
+- **Next:** Final verify / tag `v2-optimized` when the group accepts this as the complete optimized build.
+- **Later:** Seminar benchmarks comparing `v1-unoptimized` vs optimized tags.
 
 ## Architecture summary
 
-Two activities (`MainActivity`, `PreviewActivity`). Metadata flows through `GalleryRepository` / `DatasetManifestReader` from asset manifests. `ImageDecoder` supports full and display-sized asset decode. Gallery UI is a `RecyclerView` grid; `GalleryAdapter` submits bind-time sized decodes to a bounded `ExecutorService` owned by `MainActivity`.
+Two activities (`MainActivity`, `PreviewActivity`). Metadata flows through `GalleryRepository` / `DatasetManifestReader` from asset manifests. `ImageDecoder` supports full and display-sized asset decode. Gallery UI is a `RecyclerView` grid; `GalleryAdapter` uses a bounded background executor plus `ThumbnailCache` for bind-time loads.
 
 ## Directory map
 
@@ -25,7 +25,7 @@ Two activities (`MainActivity`, `PreviewActivity`). Metadata flows through `Gall
 | `app/` | Android application module |
 | `app/src/main/java/com/cs426/gallery/` | Activities + gallery adapter |
 | `.../data/` | `GalleryImage`, repository, manifest reader |
-| `.../image/` | Decode helpers |
+| `.../image/` | Decode helpers + `ThumbnailCache` |
 | `app/src/main/res/layout/` | Gallery, preview, item XML |
 | `app/src/main/assets/datasets/` | Runtime easy/mixed assets (manifest + images) |
 | `tools/datasets/` | Python generators + asset sync helper |
@@ -39,8 +39,9 @@ Two activities (`MainActivity`, `PreviewActivity`). Metadata flows through `Gall
 
 | Item | Role |
 |------|------|
-| `MainActivity` | RecyclerView host; owns bounded decode executor; opens preview via Intent id/index |
-| `GalleryAdapter` | Bind-time async display-sized decode; Future cancel + generation/id guard |
+| `MainActivity` | RecyclerView host; owns decode executor + thumbnail cache; opens preview via Intent id/index |
+| `GalleryAdapter` | Bind-time async display-sized decode with cache hit/miss; Future cancel + generation guard |
+| `ThumbnailCache` | Bounded `LruCache` keyed by `imageId@sizePx`; recycles on eviction; no Activity/View refs |
 | `GalleryGridSpacingDecoration` | Column/row spacing matching Phase 1 gaps |
 | `PreviewActivity` | Original-file preview + ActionBar Up; arrows + finger-follow swipe; boundary-aware |
 | `GalleryImage` | Immutable manifest row |
@@ -56,16 +57,16 @@ Two activities (`MainActivity`, `PreviewActivity`). Metadata flows through `Gall
 
 ## Data flow
 
-`manifest.json` (assets) → `DatasetManifestReader` → `GalleryRepository` → `MainActivity` (metadata + executor) → `GalleryAdapter.onBind` → background `decodeAssetForDisplay(cellSize)` → main-thread apply → Intent (id/index) → `PreviewActivity` → `decodeAssetFull` (original file)
+`manifest.json` (assets) → `DatasetManifestReader` → `GalleryRepository` → `MainActivity` (metadata + executor + cache) → `GalleryAdapter.onBind` → cache hit or background `decodeAssetForDisplay` → main-thread apply → Intent (id/index) → `PreviewActivity` → `decodeAssetFull` (original file)
 
 ## Current performance behavior
 
-After step 4:
+After step 5:
 
 1. **Views:** recycled via `RecyclerView` / `ViewHolder`.
-2. **Viewport load:** decode only on bind; recycle cancels Future + clears bitmaps; generation/id ignore avoids stale apply.
+2. **Viewport load:** decode only on bind (miss); recycle cancels Future; generation/id ignore avoids stale apply.
 3. **Sized thumbnails:** grid uses `inSampleSize` targeted at cell pixels; preview still full original.
-4. No reusable cache abstraction (step 5).
+4. **Bounded cache:** `LruCache` (~1/8 max heap) keyed by image+size; eviction recycles bitmaps; cleared on destroy.
 5. Nested `item_gallery_image` layout.
 6. **Background decode:** bounded fixed pool (2–4 threads); UI updates on main thread; `shutdownNow()` on destroy.
 
@@ -77,9 +78,9 @@ After step 4:
 | `v2-step-1-recyclerview` | Created |
 | `v2-step-2-viewport-loading` | Created (primary eval) |
 | `v2-step-3-background-decoding` | Created |
-| `v2-step-4-sized-thumbnails` | Created (this checkout) |
-| `v2-step-5-bounded-cache` | Planned (next) |
-| `v2-optimized` | Planned |
+| `v2-step-4-sized-thumbnails` | Created |
+| `v2-step-5-bounded-cache` | Created (this checkout) |
+| `v2-optimized` | Planned (final verified alias) |
 
 ## Dataset selection
 

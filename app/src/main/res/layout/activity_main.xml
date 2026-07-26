@@ -5,7 +5,7 @@
     android:layout_height="match_parent"
     android:background="?attr/galleryBackground">
 
-    <!-- Phase 2 step 4: RecyclerView grid; bind-time display-sized (inSampleSize) decode. -->
+    <!-- Phase 2 step 5: RecyclerView grid + display-sized decode + bounded LruCache. -->
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/gallery_recycler"
         android:layout_width="match_parent"

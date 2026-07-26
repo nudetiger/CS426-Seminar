@@ -95,10 +95,10 @@ app/src/main/assets/datasets/{easy|mixed}/
 | `v2-step-2-viewport-loading` | Bind-time load (tagged; primary) |
 | `v2-step-3-background-decoding` | Bounded executor (tagged) |
 | `v2-step-4-sized-thumbnails` | Display-sized decode (tagged) |
-| `v2-step-5-bounded-cache` | Bounded `LruCache` (planned next) |
-| `v2-optimized` | Final verified state |
+| `v2-step-5-bounded-cache` | Bounded `LruCache` (tagged) |
+| `v2-optimized` | Final verified state (planned) |
 
-Current tag: **`v2-step-4-sized-thumbnails`** — grid cells use `inSampleSize` for cell-sized decode; preview still loads the original file.
+Current tag: **`v2-step-5-bounded-cache`** — bounded thumbnail `LruCache` keyed by image id + size; no Activity/View refs in the cache.
 
 ## How to benchmark
 
