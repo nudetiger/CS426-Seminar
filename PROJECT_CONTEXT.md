@@ -6,24 +6,24 @@ Small Java / Views Android image gallery for a seminar on scrolling performance:
 
 ## Current checked-out version
 
-`v1-unoptimized` (Phase 1 baseline preserved; emulator smoke-test accepted)
+`v2-step-1-recyclerview`
 
 ## Current phase status
 
-- **Done:** Phase 1 eager gallery + preview, datasets, benchmark harness/`GalleryBench` markers. Tagged `v1-unoptimized` after emulator verification.
-- **Next:** Phase 2 step 1 — `RecyclerView` + `GridLayoutManager` + Adapter/ViewHolder (`v2-step-1-recyclerview`).
-- **Later:** Viewport loading, background decode, sized thumbnails, bounded cache → `v2-optimized`.
+- **Done:** Phase 1 tagged `v1-unoptimized`. Phase 2 step 1: `RecyclerView` + `GridLayoutManager` + `GalleryAdapter`/`ViewHolder` (+ spacing decoration).
+- **Next:** Phase 2 step 2 — bind-time / viewport loading with recycle cancel (`v2-step-2-viewport-loading`, primary eval).
+- **Later:** Background decode, sized thumbnails, bounded cache → `v2-optimized`.
 
 ## Architecture summary
 
-Two activities (`MainActivity`, `PreviewActivity`). Metadata flows through `GalleryRepository` / `DatasetManifestReader` from asset manifests. `ImageDecoder` opens local assets. Phase 1 builds an eager `ScrollView` + nested row/`item_gallery_image` hierarchy (no `RecyclerView`). Phase 2 adapter/cache classes are intentionally absent until their tagged steps.
+Two activities (`MainActivity`, `PreviewActivity`). Metadata flows through `GalleryRepository` / `DatasetManifestReader` from asset manifests. `ImageDecoder` opens local assets. Gallery UI is a `RecyclerView` grid; cells still receive bitmaps from decode-all-at-init until step 2.
 
 ## Directory map
 
 | Path | Role |
 |------|------|
 | `app/` | Android application module |
-| `app/src/main/java/com/cs426/gallery/` | Activities |
+| `app/src/main/java/com/cs426/gallery/` | Activities + gallery adapter |
 | `.../data/` | `GalleryImage`, repository, manifest reader |
 | `.../image/` | Decode helpers |
 | `app/src/main/res/layout/` | Gallery, preview, item XML |
@@ -39,32 +39,31 @@ Two activities (`MainActivity`, `PreviewActivity`). Metadata flows through `Gall
 
 | Item | Role |
 |------|------|
-| `MainActivity` | Eager ScrollView grid; owns decoded bitmap list; opens preview via Intent id/index |
-| `PreviewActivity` | Original-file preview + ActionBar Up; arrows + finger-follow swipe; boundary-aware; recycles screen bitmaps on change/destroy |
+| `MainActivity` | RecyclerView host; still owns decode-all bitmap list; opens preview via Intent id/index |
+| `GalleryAdapter` | Adapter/ViewHolder for square grid cells |
+| `GalleryGridSpacingDecoration` | Column/row spacing matching Phase 1 gaps |
+| `PreviewActivity` | Original-file preview + ActionBar Up; arrows + finger-follow swipe; boundary-aware |
 | `GalleryImage` | Immutable manifest row |
 | `GalleryRepository` | Selected dataset → ordered list + asset paths |
 | `DatasetManifestReader` | Parse/sort `manifest.json` |
-| `ImageDecoder` | Full asset decode (Phase 1 grid/preview) |
+| `ImageDecoder` | Full asset decode (grid + preview; sized decode comes later) |
 | `BenchLog` | `GalleryBench` log markers for the Python harness |
-| `activity_main.xml` | `ScrollView` + vertical container |
+| `activity_main.xml` | `RecyclerView` gallery host |
 | `activity_preview.xml` | Dual `ImageView` merge-swipe layer + `fitCenter` + prev/next |
-| `item_gallery_image.xml` | Nested cell layout for Phase 1 |
+| `item_gallery_image.xml` | Nested cell layout (unchanged visually) |
 | `app/build.gradle` | AGP module; `-PgalleryDataset=` → `BuildConfig` |
 | `gradle.properties` | Default `galleryDataset=mixed` |
-| `generate_easy_dataset.py` | 300×256 square JPEGs + manifest |
-| `generate_mixed_dataset.py` | 300 varied res/aspect + decoded budget check |
-| `sync_datasets_to_assets.py` | Copy generated → `app/.../assets/datasets/` |
 
 ## Data flow
 
-`manifest.json` (assets) → `DatasetManifestReader` → `GalleryRepository` → `MainActivity` (decode all + eager views) → Intent (id/index) → `PreviewActivity` → `ImageDecoder` (original file)
+`manifest.json` (assets) → `DatasetManifestReader` → `GalleryRepository` → `MainActivity` (decode all at init) → `GalleryAdapter` bind → Intent (id/index) → `PreviewActivity` → `ImageDecoder` (original file)
 
 ## Current performance behavior
 
-Phase 1 intentional bottlenecks active:
+After step 1:
 
-1. Full hierarchy created eagerly (`ScrollView` + horizontal rows; no `RecyclerView`).
-2. All gallery images decoded at init into non-static `MainActivity` state.
+1. **Views:** recycled via `RecyclerView` / `ViewHolder` (step 1 change).
+2. **Still eager:** all gallery images decoded at init into non-static `MainActivity` state.
 3. Original-resolution decode for grid cells (no `inSampleSize`).
 4. No reusable cache abstraction.
 5. Nested `item_gallery_image` layout.
@@ -74,9 +73,9 @@ Phase 1 intentional bottlenecks active:
 
 | Tag | Status |
 |-----|--------|
-| `v1-unoptimized` | Created (eager baseline) |
-| `v2-step-1-recyclerview` | Planned (next) |
-| `v2-step-2-viewport-loading` | Planned (primary eval) |
+| `v1-unoptimized` | Created (eager ScrollView baseline) |
+| `v2-step-1-recyclerview` | Created (this checkout) |
+| `v2-step-2-viewport-loading` | Planned (next; primary eval) |
 | `v2-step-3-background-decoding` | Planned |
 | `v2-step-4-sized-thumbnails` | Planned |
 | `v2-step-5-bounded-cache` | Planned |
@@ -95,7 +94,7 @@ Phase 1 intentional bottlenecks active:
 
 - Content descriptions include image id on gallery items and preview.
 - Initial scroll position is top of gallery.
-- In-app markers: `gallery_ready`, `preview_ready`, `preview_navigate` via `BenchLog` (`GalleryBench` tag); `reportFullyDrawn()` after gallery grid build.
+- In-app markers: `gallery_ready`, `preview_ready`, `preview_navigate` via `BenchLog` (`GalleryBench` tag); `reportFullyDrawn()` after gallery bind.
 - Runner: `python tools/benchmark/run_benchmark.py` → `{prefix}_runs.csv` + `{prefix}_summary.csv` under `docs/benchmark/`.
 - Do not invent or commit fabricated metrics.
 

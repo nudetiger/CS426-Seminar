@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Intentionally nested for Phase 1 baseline complexity; visually equivalent to Phase 2 cells. -->
+<!-- Nested cell layout kept visually equivalent across Phase 1 / Phase 2 steps. -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/item_root"

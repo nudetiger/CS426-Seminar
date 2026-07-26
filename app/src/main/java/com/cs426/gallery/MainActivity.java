@@ -4,14 +4,12 @@ import android.content.Intent;
 import android.graphics.Bitmap;
 import android.os.Bundle;
 import android.util.Log;
-import android.view.LayoutInflater;
-import android.view.View;
-import android.widget.ImageView;
-import android.widget.LinearLayout;
 import android.widget.Toast;
 
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.recyclerview.widget.GridLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
 
 import com.cs426.gallery.bench.BenchLog;
 import com.cs426.gallery.data.GalleryImage;
@@ -24,18 +22,18 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * Phase 1 gallery host: eagerly builds the full ScrollView hierarchy and decodes
- * every original-resolution image on the main thread into screen-owned state.
+ * Phase 2 step 1 gallery host: RecyclerView + GridLayoutManager recycle cell views,
+ * but still decodes every original-resolution image on the main thread at init.
  */
 public class MainActivity extends AppCompatActivity {
 
     private static final String TAG = "MainActivity";
 
-    private View galleryScroll;
-    private LinearLayout galleryContainer;
+    private RecyclerView galleryRecycler;
+    private GalleryAdapter galleryAdapter;
     private final List<Bitmap> decodedBitmaps = new ArrayList<>();
     private List<GalleryImage> images = Collections.emptyList();
-    private boolean gridBuilt;
+    private boolean gridReady;
     private long createElapsedRealtime;
 
     @Override
@@ -44,8 +42,18 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        galleryScroll = findViewById(R.id.gallery_scroll);
-        galleryContainer = findViewById(R.id.gallery_container);
+        galleryRecycler = findViewById(R.id.gallery_recycler);
+        int columnCount = getResources().getInteger(R.integer.gallery_column_count);
+        galleryRecycler.setLayoutManager(new GridLayoutManager(this, columnCount));
+        galleryRecycler.addItemDecoration(new GalleryGridSpacingDecoration(
+                columnCount,
+                getResources().getDimensionPixelSize(R.dimen.gallery_column_spacing),
+                getResources().getDimensionPixelSize(R.dimen.gallery_row_spacing)));
+        galleryRecycler.setHasFixedSize(true);
+
+        galleryAdapter = new GalleryAdapter();
+        galleryAdapter.setOnImageClickListener(this::openPreview);
+        galleryRecycler.setAdapter(galleryAdapter);
 
         GalleryRepository repository = new GalleryRepository(this);
         ImageDecoder decoder = new ImageDecoder(this);
@@ -58,7 +66,7 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
 
-        // Phase 1 bottleneck: decode all originals on the main thread during init.
+        // Still Phase 1-style bottleneck until later steps: decode all originals at init.
         for (GalleryImage image : images) {
             try {
                 Bitmap bitmap = decoder.decodeAssetFull(repository.getImageAssetPath(image));
@@ -69,75 +77,31 @@ public class MainActivity extends AppCompatActivity {
             }
         }
 
-        galleryContainer.post(this::buildEagerGrid);
+        galleryRecycler.post(this::bindGridWhenSized);
     }
 
-    private void buildEagerGrid() {
-        if (gridBuilt || isFinishing()) {
+    private void bindGridWhenSized() {
+        if (gridReady || isFinishing()) {
             return;
         }
 
         int columnCount = getResources().getInteger(R.integer.gallery_column_count);
-        // ScrollView children with wrap_content can report width 0 while empty; measure the
-        // ScrollView (or display width) so the eager grid still builds on first layout.
         int containerWidth = resolveGalleryContentWidth();
         if (columnCount <= 0) {
             return;
         }
         if (containerWidth <= 0) {
-            galleryContainer.post(this::buildEagerGrid);
+            galleryRecycler.post(this::bindGridWhenSized);
             return;
         }
 
-        galleryContainer.removeAllViews();
-
         int columnSpacing = getResources().getDimensionPixelSize(R.dimen.gallery_column_spacing);
-        int rowSpacing = getResources().getDimensionPixelSize(R.dimen.gallery_row_spacing);
         int totalSpacing = columnSpacing * (columnCount - 1);
-        // Guard narrow widths where spacing alone can exceed the container.
         int availableWidth = Math.max(0, containerWidth - totalSpacing);
         int cellSize = Math.max(1, availableWidth / columnCount);
 
-        LayoutInflater inflater = LayoutInflater.from(this);
-        LinearLayout currentRow = null;
-
-        for (int index = 0; index < images.size(); index++) {
-            if (index % columnCount == 0) {
-                currentRow = new LinearLayout(this);
-                currentRow.setOrientation(LinearLayout.HORIZONTAL);
-                LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.MATCH_PARENT,
-                        LinearLayout.LayoutParams.WRAP_CONTENT);
-                if (index > 0) {
-                    rowParams.topMargin = rowSpacing;
-                }
-                galleryContainer.addView(currentRow, rowParams);
-            }
-
-            GalleryImage image = images.get(index);
-            View itemView = inflater.inflate(R.layout.item_gallery_image, currentRow, false);
-            LinearLayout.LayoutParams cellParams = new LinearLayout.LayoutParams(cellSize, cellSize);
-            int column = index % columnCount;
-            if (column > 0) {
-                cellParams.setMarginStart(columnSpacing);
-            }
-            itemView.setLayoutParams(cellParams);
-
-            ImageView imageView = itemView.findViewById(R.id.item_image);
-            imageView.setContentDescription(
-                    getString(R.string.gallery_item_cd_indexed, image.getId()));
-            Bitmap bitmap = decodedBitmaps.get(index);
-            if (bitmap != null) {
-                imageView.setImageBitmap(bitmap);
-            }
-
-            final int imageIndex = index;
-            final int imageId = image.getId();
-            itemView.setOnClickListener(v -> openPreview(imageId, imageIndex));
-            currentRow.addView(itemView);
-        }
-
-        gridBuilt = true;
+        galleryAdapter.submit(images, decodedBitmaps, cellSize);
+        gridReady = true;
         BenchLog.mark(
                 "gallery_ready",
                 createElapsedRealtime,
@@ -146,25 +110,16 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private int resolveGalleryContentWidth() {
-        int width = galleryContainer.getWidth()
-                - galleryContainer.getPaddingLeft()
-                - galleryContainer.getPaddingRight();
+        int width = galleryRecycler.getWidth()
+                - galleryRecycler.getPaddingLeft()
+                - galleryRecycler.getPaddingRight();
         if (width > 0) {
             return width;
         }
 
-        if (galleryScroll != null) {
-            width = galleryScroll.getWidth()
-                    - galleryContainer.getPaddingLeft()
-                    - galleryContainer.getPaddingRight();
-            if (width > 0) {
-                return width;
-            }
-        }
-
         width = getResources().getDisplayMetrics().widthPixels
-                - galleryContainer.getPaddingLeft()
-                - galleryContainer.getPaddingRight();
+                - galleryRecycler.getPaddingLeft()
+                - galleryRecycler.getPaddingRight();
         return Math.max(width, 0);
     }
 
@@ -177,8 +132,8 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     protected void onDestroy() {
-        if (galleryContainer != null) {
-            galleryContainer.removeAllViews();
+        if (galleryRecycler != null) {
+            galleryRecycler.setAdapter(null);
         }
         for (Bitmap bitmap : decodedBitmaps) {
             if (bitmap != null && !bitmap.isRecycled()) {
