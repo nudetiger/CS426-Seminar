@@ -86,19 +86,19 @@ app/src/main/assets/datasets/{easy|mixed}/
 
 **Commit policy:** generated image binaries are gitignored; regenerate with scripts, then sync into assets before building. Manifests under `datasets/generated/` may be committed for checksum verification.
 
-## Git tags (planned)
+## Git tags
 
 | Tag | Meaning |
 |-----|---------|
-| `v1-unoptimized` | Eager baseline |
-| `v2-step-1-recyclerview` | RecyclerView grid |
+| `v1-unoptimized` | Eager baseline (tagged; emulator-verified) |
+| `v2-step-1-recyclerview` | RecyclerView grid (planned next) |
 | `v2-step-2-viewport-loading` | Bind-time load (primary) |
 | `v2-step-3-background-decoding` | Bounded executor |
 | `v2-step-4-sized-thumbnails` | Display-sized decode |
 | `v2-step-5-bounded-cache` | Bounded `LruCache` |
 | `v2-optimized` | Final verified state |
 
-Current work is Phase 1 **functional baseline** (eager gallery + preview). Smoke-test, then tag `v1-unoptimized`.
+Phase 1 is complete at tag `v1-unoptimized` (eager `ScrollView` gallery + preview + benchmark harness).
 
 ## How to benchmark
 

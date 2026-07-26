@@ -6,17 +6,17 @@ Small Java / Views Android image gallery for a seminar on scrolling performance:
 
 ## Current checked-out version
 
-`phase1-wip` (Phase 1 gallery + preview wired; not yet tagged `v1-unoptimized`)
+`v1-unoptimized` (Phase 1 baseline preserved; emulator smoke-test accepted)
 
 ## Current phase status
 
-- **Done:** Project structure, datasets (easy/mixed generators + assets), Phase 1 eager gallery (`ScrollView` rows), full-res decode-all-at-init on main thread, preview with ActionBar Up, arrows, and intentional decode-on-swipe merge drag.
-- **Next:** Manual smoke-test on device/emulator → commit and tag `v1-unoptimized`.
-- **Later:** Phase 2 one-tag-at-a-time optimizations.
+- **Done:** Phase 1 eager gallery + preview, datasets, benchmark harness/`GalleryBench` markers. Tagged `v1-unoptimized` after emulator verification.
+- **Next:** Phase 2 step 1 — `RecyclerView` + `GridLayoutManager` + Adapter/ViewHolder (`v2-step-1-recyclerview`).
+- **Later:** Viewport loading, background decode, sized thumbnails, bounded cache → `v2-optimized`.
 
 ## Architecture summary
 
-Two activities (`MainActivity`, `PreviewActivity`). Metadata flows through `GalleryRepository` / `DatasetManifestReader` from asset manifests. `ImageDecoder` opens local assets. Phase 1 builds an eager `ScrollView` + nested row/`item_gallery_image` hierarchy (no `RecyclerView`). Phase 2 adapter/cache classes are intentionally absent.
+Two activities (`MainActivity`, `PreviewActivity`). Metadata flows through `GalleryRepository` / `DatasetManifestReader` from asset manifests. `ImageDecoder` opens local assets. Phase 1 builds an eager `ScrollView` + nested row/`item_gallery_image` hierarchy (no `RecyclerView`). Phase 2 adapter/cache classes are intentionally absent until their tagged steps.
 
 ## Directory map
 
@@ -74,8 +74,8 @@ Phase 1 intentional bottlenecks active:
 
 | Tag | Status |
 |-----|--------|
-| `v1-unoptimized` | Not created (ready to tag after smoke-test) |
-| `v2-step-1-recyclerview` | Planned |
+| `v1-unoptimized` | Created (eager baseline) |
+| `v2-step-1-recyclerview` | Planned (next) |
 | `v2-step-2-viewport-loading` | Planned (primary eval) |
 | `v2-step-3-background-decoding` | Planned |
 | `v2-step-4-sized-thumbnails` | Planned |
