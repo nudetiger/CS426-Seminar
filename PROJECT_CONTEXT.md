@@ -6,17 +6,17 @@ Small Java / Views Android image gallery for a seminar on scrolling performance:
 
 ## Current checked-out version
 
-`v2-step-1-recyclerview`
+`v2-step-2-viewport-loading`
 
 ## Current phase status
 
-- **Done:** Phase 1 tagged `v1-unoptimized`. Phase 2 step 1: `RecyclerView` + `GridLayoutManager` + `GalleryAdapter`/`ViewHolder` (+ spacing decoration).
-- **Next:** Phase 2 step 2 — bind-time / viewport loading with recycle cancel (`v2-step-2-viewport-loading`, primary eval).
-- **Later:** Background decode, sized thumbnails, bounded cache → `v2-optimized`.
+- **Done:** Through Phase 2 step 2 — bind-time viewport loading with recycle clear / generation ignore (primary experiment step).
+- **Next:** Phase 2 step 3 — bounded background `ExecutorService` (`v2-step-3-background-decoding`).
+- **Later:** Sized thumbnails, bounded cache → `v2-optimized`.
 
 ## Architecture summary
 
-Two activities (`MainActivity`, `PreviewActivity`). Metadata flows through `GalleryRepository` / `DatasetManifestReader` from asset manifests. `ImageDecoder` opens local assets. Gallery UI is a `RecyclerView` grid; cells still receive bitmaps from decode-all-at-init until step 2.
+Two activities (`MainActivity`, `PreviewActivity`). Metadata flows through `GalleryRepository` / `DatasetManifestReader` from asset manifests. `ImageDecoder` opens local assets. Gallery UI is a `RecyclerView` grid; `GalleryAdapter` decodes each cell when bound and clears bitmaps on recycle.
 
 ## Directory map
 
@@ -39,8 +39,8 @@ Two activities (`MainActivity`, `PreviewActivity`). Metadata flows through `Gall
 
 | Item | Role |
 |------|------|
-| `MainActivity` | RecyclerView host; still owns decode-all bitmap list; opens preview via Intent id/index |
-| `GalleryAdapter` | Adapter/ViewHolder for square grid cells |
+| `MainActivity` | RecyclerView host; loads metadata only; opens preview via Intent id/index |
+| `GalleryAdapter` | Bind-time decode; generation/id guard; recycle clears bitmaps |
 | `GalleryGridSpacingDecoration` | Column/row spacing matching Phase 1 gaps |
 | `PreviewActivity` | Original-file preview + ActionBar Up; arrows + finger-follow swipe; boundary-aware |
 | `GalleryImage` | Immutable manifest row |
@@ -56,27 +56,27 @@ Two activities (`MainActivity`, `PreviewActivity`). Metadata flows through `Gall
 
 ## Data flow
 
-`manifest.json` (assets) → `DatasetManifestReader` → `GalleryRepository` → `MainActivity` (decode all at init) → `GalleryAdapter` bind → Intent (id/index) → `PreviewActivity` → `ImageDecoder` (original file)
+`manifest.json` (assets) → `DatasetManifestReader` → `GalleryRepository` → `MainActivity` (metadata) → `GalleryAdapter.onBind` (decode visible) → Intent (id/index) → `PreviewActivity` → `ImageDecoder` (original file)
 
 ## Current performance behavior
 
-After step 1:
+After step 2:
 
-1. **Views:** recycled via `RecyclerView` / `ViewHolder` (step 1 change).
-2. **Still eager:** all gallery images decoded at init into non-static `MainActivity` state.
+1. **Views:** recycled via `RecyclerView` / `ViewHolder`.
+2. **Viewport load:** decode only on bind; recycle clears/recycles holder bitmaps; generation/id ignore avoids stale apply.
 3. Original-resolution decode for grid cells (no `inSampleSize`).
 4. No reusable cache abstraction.
 5. Nested `item_gallery_image` layout.
-6. Main-thread decode during gallery `onCreate`.
+6. Main-thread decode during `onBind` (background decode is step 3).
 
 ## Version/tag map
 
 | Tag | Status |
 |-----|--------|
 | `v1-unoptimized` | Created (eager ScrollView baseline) |
-| `v2-step-1-recyclerview` | Created (this checkout) |
-| `v2-step-2-viewport-loading` | Planned (next; primary eval) |
-| `v2-step-3-background-decoding` | Planned |
+| `v2-step-1-recyclerview` | Created |
+| `v2-step-2-viewport-loading` | Created (this checkout; primary eval) |
+| `v2-step-3-background-decoding` | Planned (next) |
 | `v2-step-4-sized-thumbnails` | Planned |
 | `v2-step-5-bounded-cache` | Planned |
 | `v2-optimized` | Planned |
@@ -94,7 +94,7 @@ After step 1:
 
 - Content descriptions include image id on gallery items and preview.
 - Initial scroll position is top of gallery.
-- In-app markers: `gallery_ready`, `preview_ready`, `preview_navigate` via `BenchLog` (`GalleryBench` tag); `reportFullyDrawn()` after gallery bind.
+- In-app markers: `gallery_ready`, `preview_ready`, `preview_navigate` via `BenchLog` (`GalleryBench` tag); `reportFullyDrawn()` after first viewport bind frame.
 - Runner: `python tools/benchmark/run_benchmark.py` → `{prefix}_runs.csv` + `{prefix}_summary.csv` under `docs/benchmark/`.
 - Do not invent or commit fabricated metrics.
 

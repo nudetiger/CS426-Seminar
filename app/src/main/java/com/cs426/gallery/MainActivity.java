@@ -1,7 +1,6 @@
 package com.cs426.gallery;
 
 import android.content.Intent;
-import android.graphics.Bitmap;
 import android.os.Bundle;
 import android.util.Log;
 import android.widget.Toast;
@@ -17,13 +16,12 @@ import com.cs426.gallery.data.GalleryRepository;
 import com.cs426.gallery.image.ImageDecoder;
 
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
 /**
- * Phase 2 step 1 gallery host: RecyclerView + GridLayoutManager recycle cell views,
- * but still decodes every original-resolution image on the main thread at init.
+ * Phase 2 step 2 gallery host: RecyclerView grid with bind-time (viewport) loading.
+ * Images decode when cells bind; recycled holders clear bitmaps so stale pixels never stick.
  */
 public class MainActivity extends AppCompatActivity {
 
@@ -31,7 +29,6 @@ public class MainActivity extends AppCompatActivity {
 
     private RecyclerView galleryRecycler;
     private GalleryAdapter galleryAdapter;
-    private final List<Bitmap> decodedBitmaps = new ArrayList<>();
     private List<GalleryImage> images = Collections.emptyList();
     private boolean gridReady;
     private long createElapsedRealtime;
@@ -51,12 +48,12 @@ public class MainActivity extends AppCompatActivity {
                 getResources().getDimensionPixelSize(R.dimen.gallery_row_spacing)));
         galleryRecycler.setHasFixedSize(true);
 
-        galleryAdapter = new GalleryAdapter();
-        galleryAdapter.setOnImageClickListener(this::openPreview);
-        galleryRecycler.setAdapter(galleryAdapter);
-
         GalleryRepository repository = new GalleryRepository(this);
         ImageDecoder decoder = new ImageDecoder(this);
+
+        galleryAdapter = new GalleryAdapter(repository, decoder);
+        galleryAdapter.setOnImageClickListener(this::openPreview);
+        galleryRecycler.setAdapter(galleryAdapter);
 
         try {
             images = repository.loadImages();
@@ -66,17 +63,7 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
 
-        // Still Phase 1-style bottleneck until later steps: decode all originals at init.
-        for (GalleryImage image : images) {
-            try {
-                Bitmap bitmap = decoder.decodeAssetFull(repository.getImageAssetPath(image));
-                decodedBitmaps.add(bitmap);
-            } catch (IOException e) {
-                Log.e(TAG, "Failed to decode " + image.getFilename(), e);
-                decodedBitmaps.add(null);
-            }
-        }
-
+        // Metadata only at init — decode happens in adapter onBind (viewport loading).
         galleryRecycler.post(this::bindGridWhenSized);
     }
 
@@ -100,13 +87,19 @@ public class MainActivity extends AppCompatActivity {
         int availableWidth = Math.max(0, containerWidth - totalSpacing);
         int cellSize = Math.max(1, availableWidth / columnCount);
 
-        galleryAdapter.submit(images, decodedBitmaps, cellSize);
+        galleryAdapter.submit(images, cellSize);
         gridReady = true;
-        BenchLog.mark(
-                "gallery_ready",
-                createElapsedRealtime,
-                "dataset=" + BuildConfig.GALLERY_DATASET + " count=" + images.size());
-        reportFullyDrawn();
+        // After submit, the next frame has bound the first viewport (sync decode on main thread).
+        galleryRecycler.post(() -> {
+            if (isFinishing()) {
+                return;
+            }
+            BenchLog.mark(
+                    "gallery_ready",
+                    createElapsedRealtime,
+                    "dataset=" + BuildConfig.GALLERY_DATASET + " count=" + images.size());
+            reportFullyDrawn();
+        });
     }
 
     private int resolveGalleryContentWidth() {
@@ -132,15 +125,12 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     protected void onDestroy() {
+        if (galleryAdapter != null) {
+            galleryAdapter.releaseBitmaps(galleryRecycler);
+        }
         if (galleryRecycler != null) {
             galleryRecycler.setAdapter(null);
         }
-        for (Bitmap bitmap : decodedBitmaps) {
-            if (bitmap != null && !bitmap.isRecycled()) {
-                bitmap.recycle();
-            }
-        }
-        decodedBitmaps.clear();
         super.onDestroy();
     }
 }

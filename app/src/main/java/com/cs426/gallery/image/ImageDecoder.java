@@ -10,7 +10,7 @@ import java.io.IOException;
 import java.io.InputStream;
 
 /**
- * Decodes local asset images. Phase 1 uses full-resolution decode for grid cells.
+ * Decodes local asset images. Grid cells still use full-resolution decode until step 4.
  * Sampled thumbnail decode will be added in Phase 2 step 4.
  */
 public class ImageDecoder {

@@ -92,13 +92,13 @@ app/src/main/assets/datasets/{easy|mixed}/
 |-----|---------|
 | `v1-unoptimized` | Eager baseline (tagged; emulator-verified) |
 | `v2-step-1-recyclerview` | RecyclerView grid (tagged) |
-| `v2-step-2-viewport-loading` | Bind-time load (primary; planned next) |
-| `v2-step-3-background-decoding` | Bounded executor |
+| `v2-step-2-viewport-loading` | Bind-time load (tagged; primary) |
+| `v2-step-3-background-decoding` | Bounded executor (planned next) |
 | `v2-step-4-sized-thumbnails` | Display-sized decode |
 | `v2-step-5-bounded-cache` | Bounded `LruCache` |
 | `v2-optimized` | Final verified state |
 
-Current tag: **`v2-step-1-recyclerview`** — cell views recycle; images still decoded all-at-init (viewport loading is step 2).
+Current tag: **`v2-step-2-viewport-loading`** — decode on bind; clear/ignore on recycle (no decode-all-at-init).
 
 ## How to benchmark
 
